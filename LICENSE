@@ -1,0 +1,12 @@
+This program is licensed under GNU Affero General Public License Version 3. For
+legal text, please see "COPYING" file.
+
+The author of the original program is Michael Wodniok, this program has been
+written for WorNet AG. WorNet AG is the copyright owner and has permission to
+relicense this work even with different conditions.
+
+WorNet AG interprets the "covered work" as this Django app and not the whole
+Django project. Other apps used in the same Django setup may be licensed
+differently. This does not change any of the terms and conditions in the
+license. It just clarifies the scope the applied license and interpretation of
+linking in Django.
