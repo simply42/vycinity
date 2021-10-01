@@ -13,18 +13,21 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with VyCinity. If not, see <https://www.gnu.org/licenses/>.
 
+import copy
 import uuid
 from django.test import Client, TestCase
-from vycinity.models import customer_models, firewall_models
+from rest_framework import serializers
+from vycinity.models import customer_models, firewall_models, change_models
+from vycinity.serializers import firewall_serializers
 from django.contrib.auth.hashers import make_password
 from base64 import b64encode
 import json
 
 class GenericAPITest(TestCase):
-    # TODO: Translate, wording
     '''
-    Tested die API für ein generisches besessenes Objekt. Hier am Beispiel von Rulesets, weil diese
-    Referenzen auf Firewalls haben, die wiederum jemandem gehören.
+    Tests the API for a generic owned object. Here a Ruleset is tested, as the logic of other owned
+    object is the same, testing of them can be reduced or skipped. The Rulesets are tested here
+    because they are quite complex as they have references to other owned objects.
     '''
 
     @classmethod
@@ -43,6 +46,11 @@ class GenericAPITest(TestCase):
         cls.private_ruleset_other_user.firewalls.set([cls.firewall_other_user])
         cls.public_ruleset_other_user = firewall_models.RuleSet.objects.create(comment='other public ruleset', priority=11, owner=cls.other_customer, public=True)
         cls.public_ruleset_other_user.firewalls.set([cls.firewall_other_user])
+        cls.changeset_ruleset_main_user = change_models.ChangeSet.objects.create(owner=cls.main_customer, user=cls.main_user, owner_name=cls.main_customer.name, user_name=cls.main_user.name)
+        serialized_ruleset_main_user = firewall_serializers.RuleSetSerializer(cls.private_ruleset_main_user).data
+        serialized_ruleset_main_user_modified = copy.deepcopy(serialized_ruleset_main_user)
+        serialized_ruleset_main_user_modified['comment'] = 'main private ruleset modified'
+        cls.change_ruleset_main_user_name = change_models.Change.objects.create(changeset=cls.changeset_ruleset_main_user, entity='RuleSet', pre=serialized_ruleset_main_user, post=serialized_ruleset_main_user_modified)
 
     def test_list_rulesets(self):
         c = Client()
@@ -62,6 +70,22 @@ class GenericAPITest(TestCase):
         self.assertEqual(str(self.other_customer.id), content[1]['owner'])
         self.assertTrue(content[1]['public'])
 
+        response = c.get('/api/v1/rulesets?changeset=%s' % self.changeset_ruleset_main_user.id, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
+        self.assertEqual(200, response.status_code)
+        content = response.json()
+        self.assertTrue(isinstance(content, list))
+        self.assertEqual(2, len(content))
+        self.assertEqual(self.change_ruleset_main_user_name.post['comment'], content[0]['comment'])
+        self.assertListEqual([str(self.firewall_main_user.id)], content[0]['firewalls'])
+        self.assertEqual(10, content[0]['priority'])
+        self.assertEqual(str(self.main_customer.id), content[0]['owner'])
+        self.assertFalse(content[0]['public'])
+        self.assertEqual(self.public_ruleset_other_user.comment, content[1]['comment'])
+        self.assertListEqual([], content[1]['firewalls'])
+        self.assertEqual(11, content[1]['priority'])
+        self.assertEqual(str(self.other_customer.id), content[1]['owner'])
+        self.assertTrue(content[1]['public'])
+
     def test_list_customer_subcustomer_rulesets(self):
         sub_customer = customer_models.Customer.objects.create(name='Test Sub customer', parent_customer=self.main_customer)
         sub_user = customer_models.User.objects.create(name='testuser2', customer=sub_customer)
@@ -71,8 +95,7 @@ class GenericAPITest(TestCase):
         sub_customer_ruleset = firewall_models.RuleSet.objects.create(comment='Sub-customer ruleset', priority=12, owner=sub_customer, public=False)
         c = Client()
 
-# TODO: translate
-        # korrekte Liste mit Eltern- und Kind-Customer, aber ohne parallelem Customer 
+        # correct list of parents and childs rulesets, without parallel customer ones
         response = c.get('/api/v1/rulesets', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(200, response.status_code)
         content = response.json()
@@ -94,8 +117,7 @@ class GenericAPITest(TestCase):
         self.assertEqual(str(sub_customer.id), content[2]['owner'])
         self.assertFalse(content[2]['public'])
 
-# TODO: translate
-        # korrekte Liste nur mit Kind-Customer
+        # correct liste of childs rulesets
         response = c.get('/api/v1/rulesets', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=sub_auth)
         self.assertEqual(200, response.status_code)
         content = response.json()
@@ -115,8 +137,7 @@ class GenericAPITest(TestCase):
     def test_get_single_ruleset(self):
         c = Client()
 
-# TODO: translate
-        # korrekter Fall eigenes Ruleset
+        # correct case of getting an own Ruleset
         response = c.get('/api/v1/rulesets/%s' % self.private_ruleset_main_user.id, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(200, response.status_code)
         content = response.json()
@@ -127,8 +148,7 @@ class GenericAPITest(TestCase):
         self.assertEqual(str(self.main_customer.id), content['owner'])
         self.assertFalse(content['public'])
 
-# TODO: translate
-        # korrekter Fall anderes, öffentliches Ruleset
+        # correct case for getting a public Ruleset
         response = c.get('/api/v1/rulesets/%s' % self.public_ruleset_other_user.id, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(200, response.status_code)
         content = response.json()
@@ -139,16 +159,25 @@ class GenericAPITest(TestCase):
         self.assertEqual(str(self.other_customer.id), content['owner'])
         self.assertTrue(content['public'])
 
-# TODO: translate
-        # Fall ohne Zugang
+        # case for getting a modified one
+        response = c.get('/api/v1/rulesets/%s?changeset=%s' % (self.private_ruleset_main_user.id, self.changeset_ruleset_main_user.id), HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
+        self.assertEqual(200, response.status_code)
+        content = response.json()
+        self.assertTrue(isinstance(content, dict))
+        self.assertEqual(self.change_ruleset_main_user_name.post['comment'], content['comment'])
+        self.assertListEqual([str(self.firewall_main_user.id)], content['firewalls'])
+        self.assertEqual(10, content['priority'])
+        self.assertEqual(str(self.main_customer.id), content['owner'])
+        self.assertFalse(content['public'])
+
+        # case without access
         response2 = c.get('/api/v1/rulesets/%s' % self.private_ruleset_other_user.id, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(403, response2.status_code)
 
     def test_post_ruleset(self):
         c = Client()
 
-# TODO: translate
-        # korrekter Fall
+        # correct case
         response = c.post('/api/v1/rulesets', {'comment': 'another ruleset', 'owner': self.main_customer.id, 'firewalls': [self.firewall_main_user.id], 'public': False, 'priority': 13}, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(201, response.status_code)
         content = response.json()
@@ -158,14 +187,13 @@ class GenericAPITest(TestCase):
         self.assertEqual([str(self.firewall_main_user.id)], content['firewalls'])
         self.assertFalse(content['public'])
         self.assertEqual(13, content['priority'])
+        self.assertIsNotNone(content['changeset'])
         
-# TODO: translate
-        # Falscher Fall: Ruleset darf nicht für wen anders anlegbar sein
+        # wrong case: ruleset must not be created for other authorized customers
         response = c.post('/api/v1/rulesets', {'comment': 'yet another ruleset', 'owner': str(self.other_customer.id), 'firewalls': [], 'public': False, 'priority': 13}, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(403, response.status_code)
 
-# TODO: translate
-        # Falscher Fall: Ruleset darf nicht mit Daten ohne Zugang anlegbar sein
+        # wrong case: ruleset must not be created with references to inaccessible items
         response = c.post('/api/v1/rulesets', {'comment': 'yet another ruleset', 'owner': str(self.main_customer.id), 'firewalls': [str(self.firewall_other_user.id)], 'public': False, 'priority': 13}, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(403, response.status_code)
         
@@ -178,8 +206,7 @@ class GenericAPITest(TestCase):
         sub_customer_ruleset = firewall_models.RuleSet.objects.create(comment='Sub-customer ruleset', priority=12, owner=sub_customer, public=False)
         c = Client()
 
-# TODO: translate
-        # korrekter Fall
+        # correct case
         response = c.put('/api/v1/rulesets/%s' % sub_customer_ruleset.id, json.dumps({'comment': 'sub customer ruleset 2', 'owner': str(sub_customer.id), 'priority': 12, 'public': False}), content_type='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(200, response.status_code)
         content = response.json()
@@ -189,47 +216,51 @@ class GenericAPITest(TestCase):
         self.assertEqual(12, content['priority'])
         self.assertFalse(content['public'])
         self.assertListEqual([], content['firewalls'])
+        self.assertIsNotNone(content['changeset'])
 
-# TODO: translate
-        # Falscher Fall: Sub Kunde darf keine Firewalls verwenden, die er nicht sehen kann
+        # correct case for already modified ruleset
+        response = c.put('/api/v1/rulesets/%s?changeset=%s' % (self.private_ruleset_main_user.id, self.changeset_ruleset_main_user.id), json.dumps({'comment': 'main private ruleset modified', 'owner': str(self.private_ruleset_main_user.owner.id), 'priority': self.private_ruleset_main_user.priority, 'public': self.private_ruleset_main_user.public}), content_type='application/json', HTTP_AUTHORIZATION=self.authorization)
+        self.assertEqual(200, response.status_code)
+        content = response.json()
+        self.assertTrue(isinstance(content, dict))
+        self.assertEqual('sub customer ruleset 2', content['comment'])
+        self.assertEqual(str(sub_customer.id), content['owner'])
+        self.assertEqual(12, content['priority'])
+        self.assertFalse(content['public'])
+        self.assertListEqual([], content['firewalls'])
+        self.assertEqual(str(self.changeset_ruleset_main_user.id), content['changeset'])
+
+        # wrong case: sub customer must not use firewall which is not accessible
         response = c.put('/api/v1/rulesets/%s' % sub_customer_ruleset.id, json.dumps({'comment': 'sub customer ruleset 2', 'owner': str(sub_customer.id), 'priority': 12, 'public': False, 'firewalls':[str(self.firewall_main_user.id)]}), content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(403, response.status_code)
         
-# TODO: translate
-        # Falscher Fall: Ruleset darf nicht für wen anders veränderbar sein
+        # wrong case: other customers ruleset must not be changable
         response = c.put('/api/v1/rulesets/%s' % self.private_ruleset_other_user.id, json.dumps({'comment': 'my ruleset 2', 'owner': str(self.other_customer.id), 'priority': 10, 'public': False, 'firewalls':[str(self.firewall_other_user.id)]}), content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(403, response.status_code)
         
-# TODO: translate
-        # Falscher Fall: Ruleset darf nicht überschrieben werden auf einen Customer, der einem nicht gehört
+        # wrong case: ruleset must not be transferable to customer which is not accessible
         response = c.put('/api/v1/rulesets/%s' % self.private_ruleset_main_user.id, json.dumps({'comment': 'my ruleset 2', 'owner': str(self.other_customer.id), 'priority': 10, 'public': False, 'firewalls':[str(self.firewall_other_user.id)]}), content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(403, response.status_code)
         
-# TODO: translate
-        # Falscher Fall: Rulesets müssen konsistent sein
+        # wrong case: ruleset must be consistent
         response = c.put('/api/v1/rulesets/%s' % self.private_ruleset_main_user.id, json.dumps({'comment': 'sub customer ruleset 2', 'owner': str(self.main_customer.id), 'priority': 12, 'public': False, 'firewalls': [str(uuid.uuid4())]}), content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(400, response.status_code)
 
     def test_delete_customer(self):
         c = Client()
 
-# TODO: translate
-        # korrekter Fall
+        # correct case
         own_private_ruleset_id = self.private_ruleset_main_user.id
         response = c.delete('/api/v1/rulesets/%s' % own_private_ruleset_id, HTTP_AUTHORIZATION=self.authorization)
-        self.assertEqual(204, response.status_code)
-        try:
-            firewall_models.RuleSet.objects.get(id=own_private_ruleset_id)
-            self.fail('Ruleset not deleted')
-        except firewall_models.RuleSet.DoesNotExist:
-            pass
+        self.assertEqual(200, response.status_code)
+        content = response.json()
+        self.assertIsNotNone(content['changeset'])
+        changeset_containing_change = change_models.ChangeSet.objects.get(id=content['changeset'])
+        self.assertEqual(1, len(changeset_containing_change.changes))
+        self.assertEqual('Ruleset', changeset_containing_change.changes[0].entity)
+        self.assertIsNone(changeset_containing_change.changes[0].post)
         
-# TODO: translate
-        # Falscher Fall: Anderer Customer RuleSets dürfen nicht gelöscht werden
+        # wrong case: rulesets of other customer must not be deleted
         other_customers_public_ruleset_id = self.public_ruleset_other_user.id
         response = c.delete('/api/v1/rulesets/%s' % other_customers_public_ruleset_id, HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(403, response.status_code)
-        try:
-            firewall_models.RuleSet.objects.get(id=other_customers_public_ruleset_id)
-        except firewall_models.RuleSet.DoesNotExist:
-            self.fail('ruleset deleted, but should exist')
