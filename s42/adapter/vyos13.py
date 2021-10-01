@@ -14,7 +14,6 @@
 # along with VyCinity. If not, see <https://www.gnu.org/licenses/>.
 
 import copy
-from typing_extensions import Protocol
 from vycinity.models import basic_models, network_models, firewall_models
 from vycinity.models.firewall_models import DIRECTION_FROM, DIRECTION_INTO
 from ..routerconfig import vyos13 as configurator

@@ -18,6 +18,9 @@ from django.db import models
 from vycinity.models import customer_models
 
 class ChangeSet(models.Model):
+    '''
+    ChangeSet describes a list of changes to different entities.
+    '''
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     owner = models.ForeignKey(customer_models.Customer, on_delete=models.SET_NULL, null=True)
     user = models.ForeignKey(customer_models.User, on_delete=models.SET_NULL, null=True)
@@ -28,6 +31,10 @@ class ChangeSet(models.Model):
     applied = models.DateTimeField(null=True)
 
 class Change(models.Model):
+    '''
+    A Change describes a changed entity in serialized "diff" style. If pre or post are set, the
+    entity is assumed to be created or deleted.
+    '''
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     changeset = models.ForeignKey(ChangeSet, related_name='changes', on_delete=models.CASCADE)
     entity = models.CharField(max_length=255)
