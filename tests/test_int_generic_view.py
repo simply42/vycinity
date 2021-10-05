@@ -188,6 +188,14 @@ class GenericAPITest(TestCase):
         self.assertFalse(content['public'])
         self.assertEqual(13, content['priority'])
         self.assertIsNotNone(content['changeset'])
+        new_changeset = change_models.ChangeSet.objects.get(id=content['changeset'])
+        self.assertEqual(1, len(new_changeset.changes))
+        self.assertIsNone(new_changeset.changes[0].pre)
+        self.assertEqual('another ruleset', new_changeset.changes[0].post['comment'])
+        self.assertEqual(str(self.main_customer.id), new_changeset.changes[0].post['owner'])
+        self.assertEqual([str(self.firewall_main_user.id)], new_changeset.changes[0].post['firewalls'])
+        self.assertFalse(new_changeset.changes[0].post['public'])
+        self.assertEqual(13, new_changeset.changes[0].post['priority'])
         
         # wrong case: ruleset must not be created for other authorized customers
         response = c.post('/api/v1/rulesets', {'comment': 'yet another ruleset', 'owner': str(self.other_customer.id), 'firewalls': [], 'public': False, 'priority': 13}, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
@@ -207,6 +215,7 @@ class GenericAPITest(TestCase):
         c = Client()
 
         # correct case
+        ruleset_before_modification = firewall_serializers.RuleSetSerializer(sub_customer_ruleset).data
         response = c.put('/api/v1/rulesets/%s' % sub_customer_ruleset.id, json.dumps({'comment': 'sub customer ruleset 2', 'owner': str(sub_customer.id), 'priority': 12, 'public': False}), content_type='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(200, response.status_code)
         content = response.json()
@@ -217,6 +226,14 @@ class GenericAPITest(TestCase):
         self.assertFalse(content['public'])
         self.assertListEqual([], content['firewalls'])
         self.assertIsNotNone(content['changeset'])
+        new_changeset = change_models.ChangeSet.objects.get(id=content['changeset'])
+        self.assertEqual(1, len(new_changeset.changes))
+        self.assertEqual(ruleset_before_modification, new_changeset.changes[0].pre)
+        self.assertEqual(content['comment'], new_changeset.changes[0].post['comment'])
+        self.assertEqual(content['owner'], new_changeset.changes[0].post['owner'])
+        self.assertEqual(content['firewalls'], new_changeset.changes[0].post['firewalls'])
+        self.assertEqual(content['public'], new_changeset.changes[0].post['public'])
+        self.assertEqual(content['priority'], new_changeset.changes[0].post['priority'])
 
         # correct case for already modified ruleset
         response = c.put('/api/v1/rulesets/%s?changeset=%s' % (self.private_ruleset_main_user.id, self.changeset_ruleset_main_user.id), json.dumps({'comment': 'main private ruleset modified', 'owner': str(self.private_ruleset_main_user.owner.id), 'priority': self.private_ruleset_main_user.priority, 'public': self.private_ruleset_main_user.public}), content_type='application/json', HTTP_AUTHORIZATION=self.authorization)
@@ -229,6 +246,14 @@ class GenericAPITest(TestCase):
         self.assertFalse(content['public'])
         self.assertListEqual([], content['firewalls'])
         self.assertEqual(str(self.changeset_ruleset_main_user.id), content['changeset'])
+        modified_changeset = change_models.ChangeSet.objects.get(id=self.changeset_ruleset_main_user.id)
+        self.assertEqual(1, len(new_changeset.changes))
+        self.assertEqual(ruleset_before_modification, new_changeset.changes[0].pre)
+        self.assertEqual(content['comment'], new_changeset.changes[0].post['comment'])
+        self.assertEqual(content['owner'], new_changeset.changes[0].post['owner'])
+        self.assertEqual(content['firewalls'], new_changeset.changes[0].post['firewalls'])
+        self.assertEqual(content['public'], new_changeset.changes[0].post['public'])
+        self.assertEqual(content['priority'], new_changeset.changes[0].post['priority'])
 
         # wrong case: sub customer must not use firewall which is not accessible
         response = c.put('/api/v1/rulesets/%s' % sub_customer_ruleset.id, json.dumps({'comment': 'sub customer ruleset 2', 'owner': str(sub_customer.id), 'priority': 12, 'public': False, 'firewalls':[str(self.firewall_main_user.id)]}), content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
