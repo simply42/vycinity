@@ -14,13 +14,15 @@
 # along with VyCinity. If not, see <https://www.gnu.org/licenses/>.
 
 from abc import ABC, abstractmethod
+import copy
 from django.http import Http404, HttpResponseForbidden
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from vycinity.models import OwnedObject, customer_models
+from vycinity.models import OwnedObject, customer_models, change_models
 from typing import Any, List, Dict
+from uuid import UUID
 
 class ValidationResult:
     '''
@@ -73,9 +75,36 @@ class GenericOwnedObjectList(APIView, ABC):
 
     def get(self, request, format=None):
         model = self.get_model()
+        relevant_changes = []
+        if 'changeset' in request.GET:
+            try:
+                changeset = change_models.ChangeSet.objects.get(id=request.GET['changeset'])
+                if not changeset.owner in request.user.customer.get_visible_customers():
+                    return HttpResponseForbidden()
+                for change in changeset.changes.all():
+                    if change.entity == self.get_model().__name__:
+                        relevant_changes.append(change)
+                        break
+            except change_models.ChangeSet.DoesNotExist as dne_exc:
+                raise Http404() from dne_exc
         instances = model.filter_query_by_customers_or_public(model.objects, 
             request.user.customer.get_visible_customers())
-        return Response(self.filter_attributes(self.get_serializer()(instances, many=True).data, request.user.customer))
+        serialized_data = self.get_serializer()(instances, many=True).data
+        for relevant_change in relevant_changes:
+            if relevant_change.pre == None and not relevant_change.post is None:
+                additional_object = copy.deepcopy(relevant_change.post)
+                additional_object['id'] = str(relevant_change.new_uuid)
+                serialized_data.append(additional_object)
+            elif not relevant_change.pre is None:
+                for index in range(len(serialized_data)):
+                    if serialized_data[index]['id'] == relevant_change.pre['id']:
+                        if relevant_change.post is None:
+                            serialized_data.pop(index)
+                        else:
+                            serialized_data[index] = copy.deepcopy(relevant_change.post)
+                        break
+
+        return Response(self.filter_attributes(serialized_data, request.user.customer))
 
     def post(self, request, format=None):
         serializer = self.get_serializer()(data=request.data)
@@ -119,13 +148,28 @@ class GenericOwnedObjectDetail(APIView):
         return True
 
     def get(self, request, id, format=None):
-        try:
-            instance = self.get_model().objects.get(id=id)
-            if not instance.owned_by(request.user.customer) and not instance.public:
-                return HttpResponseForbidden()
-            return Response(self.filter_attributes(self.get_serializer()(instance).data, request.user.customer))
-        except self.get_model().DoesNotExist as dne_exc:
-            raise Http404() from dne_exc
+        serialized_data = None
+        if 'changeset' in request.GET:
+            try:
+                changeset = change_models.ChangeSet.objects.get(id=request.GET['changeset'])
+                if not changeset.owner in request.user.customer.get_visible_customers():
+                    return HttpResponseForbidden()
+                for change in changeset.changes.all():
+                    thisname = self.get_model().__name__
+                    if change.entity == thisname and (change.new_uuid == id or (not change.pre is None and UUID(change.pre['id']) == id)):
+                        serialized_data = change.post
+                        break
+            except change_models.ChangeSet.DoesNotExist as dne_exc:
+                raise Http404() from dne_exc
+        if serialized_data is None:
+            try:
+                instance = self.get_model().objects.get(id=id)
+                if not instance.owned_by(request.user.customer) and not instance.public:
+                    return HttpResponseForbidden()
+                serialized_data = self.get_serializer()(instance).data
+            except (self.get_model().DoesNotExist, change_models.ChangeSet.DoesNotExist) as dne_exc:
+                raise Http404() from dne_exc
+        return Response(self.filter_attributes(serialized_data, request.user.customer))
 
     def put(self, request, id, format=None):
         try:
