@@ -22,6 +22,7 @@ class FirewallSerializer(serializers.ModelSerializer):
         fields = ['id', 'owner', 'stateful', 'name', 'network', 'default_action_into', 'default_action_from', 'public']
         read_only_fields = ['id']
     owner = serializers.PrimaryKeyRelatedField(queryset=customer_models.Customer.objects.all(), pk_field=serializers.UUIDField(format='hex_verbose'), required=True)
+    network = serializers.PrimaryKeyRelatedField(queryset=firewall_models.Firewall.objects.all(), pk_field=serializers.UUIDField(format='hex_verbose'), required=False)
 
 class RuleSetSerializer(serializers.ModelSerializer):
     class Meta:
@@ -58,9 +59,9 @@ class BasicRuleSerializer(serializers.ModelSerializer):
         fields = ['id', 'ruleset', 'priority', 'comment', 'disable', 'source_address', 'destination_address', 'destination_service', 'action', 'log']
         read_only_fields = ['id']
     ruleset = serializers.PrimaryKeyRelatedField(queryset=firewall_models.RuleSet.objects.all(), pk_field=serializers.UUIDField(format='hex_verbose'), required=True)
-    source_address = serializers.PrimaryKeyRelatedField(queryset=firewall_models.AddressObject.objects.all(), pk_field=serializers.UUIDField(format='hex_verbose'), required=True)
+    source_address = serializers.PrimaryKeyRelatedField(queryset=firewall_models.AddressObject.objects.all(), pk_field=serializers.UUIDField(format='hex_verbose'), required=False)
     destination_address = serializers.PrimaryKeyRelatedField(queryset=firewall_models.AddressObject.objects.all(), pk_field=serializers.UUIDField(format='hex_verbose'), required=True)
-    destination_service = serializers.PrimaryKeyRelatedField(queryset=firewall_models.ServiceObject.objects.all(), pk_field=serializers.UUIDField(format='hex_verbose'), required=True)
+    destination_service = serializers.PrimaryKeyRelatedField(queryset=firewall_models.ServiceObject.objects.all(), pk_field=serializers.UUIDField(format='hex_verbose'), required=False)
 
 class CustomRuleSerializer(serializers.ModelSerializer):
     class Meta:

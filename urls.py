@@ -18,7 +18,8 @@ from rest_framework.schemas import get_schema_view
 from rest_framework.urlpatterns import format_suffix_patterns
 from rest_framework.permissions import IsAuthenticated
 
-from .views import basic_views, customer_views, network_views, firewall_views, change_views
+from vycinity.meta.registries import ChangeableObjectRegistry
+from .views import basic_views, customer_views, change_views
 
 urlpatterns = [
     path('routers/vyos13', basic_views.Vyos13RouterList.as_view()),
@@ -29,34 +30,6 @@ urlpatterns = [
     path('deployments', basic_views.DeploymentList.as_view()),
     path('customers', customer_views.CustomerList.as_view()),
     path('customers/<uuid:id>', customer_views.CustomerDetailView.as_view()),
-    path('networks', network_views.NetworkList.as_view()),
-    path('networks/<uuid:id>', network_views.NetworkDetailView.as_view()),
-    path('managedinterfaces', network_views.ManagedInterfaceList.as_view()),
-    path('managedinterfaces/<uuid:id>', network_views.ManagedInterfaceDetailView.as_view()),
-    path('managedinterfaces/vrrp', network_views.ManagedVRRPInterfaceList.as_view()),
-    path('managedinterfaces/vrrp/<uuid:id>', network_views.ManagedVRRPInterfaceDetailView.as_view()),
-    path('firewalls', firewall_views.FirewallList.as_view()),
-    path('firewalls/<uuid:id>', firewall_views.FirewallDetailView.as_view()),
-    path('rulesets', firewall_views.RuleSetList.as_view()),
-    path('rulesets/<uuid:id>', firewall_views.RuleSetDetailView.as_view()),
-    path('rules/basic', firewall_views.BasicRuleList.as_view()),
-    path('rules/basic/<uuid:id>', firewall_views.BasicRuleDetail.as_view()),
-    path('rules/custom', firewall_views.CustomRuleList.as_view()),
-    path('rules/custom/<uuid:id>', firewall_views.CustomRuleDetail.as_view()),
-    path('objects/addresses/networks', firewall_views.NetworkAddressObjectList.as_view()),
-    path('objects/addresses/networks/<uuid:id>', firewall_views.NetworkAddressObjectDetail.as_view()),
-    path('objects/addresses/lists', firewall_views.ListAddressObjectList.as_view()),
-    path('objects/addresses/lists/<uuid:id>', firewall_views.ListAddressObjectDetail.as_view()),
-    path('objects/addresses/cidrs', firewall_views.CIDRAddressObjectList.as_view()),
-    path('objects/addresses/cidrs/<uuid:id>', firewall_views.CIDRAddressObjectDetail.as_view()),
-    path('objects/addresses/hosts', firewall_views.HostAddressObjectList.as_view()),
-    path('objects/addresses/hosts/<uuid:id>', firewall_views.HostAddressObjectDetail.as_view()),
-    path('objects/services/simple', firewall_views.SimpleServiceObjectList.as_view()),
-    path('objects/services/simple/<uuid:id>', firewall_views.SimpleServiceObjectDetail.as_view()),
-    path('objects/services/lists', firewall_views.ListServiceObjectList.as_view()),
-    path('objects/services/lists/<uuid:id>', firewall_views.ListServiceObjectDetail.as_view()),
-    path('objects/services/range', firewall_views.RangeServiceObjectList.as_view()),
-    path('objects/services/range/<uuid:id>', firewall_views.RangeServiceObjectDetail.as_view()),
     path('changesets', change_views.ChangeSetList.as_view()),
     path('changesets/<uuid:id>', change_views.ChangeSetDetailView.as_view()),
     path('changes', change_views.ChangeList.as_view()),
@@ -64,5 +37,7 @@ urlpatterns = [
     path('schema', get_schema_view(permission_classes=[IsAuthenticated])),
     path('dev-auth/', include('rest_framework.urls'))
 ]
+
+urlpatterns += ChangeableObjectRegistry.instance().create_url_patterns()
 
 urlpatterns = format_suffix_patterns(urlpatterns)

@@ -38,6 +38,8 @@ class Change(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     changeset = models.ForeignKey(ChangeSet, related_name='changes', on_delete=models.CASCADE)
     entity = models.CharField(max_length=255)
-    pre = models.JSONField()
-    post = models.JSONField()
+    pre = models.JSONField(null=True)
+    post = models.JSONField(null=True)
     new_uuid = models.UUIDField(null=True)
+    dependencies = models.ManyToManyField(to='Change', related_name='dependents')
+    

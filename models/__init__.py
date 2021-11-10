@@ -15,6 +15,7 @@
 
 from abc import abstractstaticmethod
 from django.db import models
+from rest_framework import serializers
 from vycinity.models import customer_models
 from typing import Any, List
 
@@ -47,6 +48,16 @@ class AbstractOwnedObject:
         returns: The modified QuerySet.
         '''
         raise NotImplementedError('filter_query_by_customers not yet implemented')
+
+    @abstractstaticmethod
+    def get_serializer() -> serializers.Serializer:
+        '''
+        Returns a Serializer for this Model.
+
+        returns: The Serializer for this Model.
+        '''
+        raise NotImplementedError('get_serializer not yet implemented')
+
 
 class OwnedObject(models.Model, AbstractOwnedObject):
     '''
