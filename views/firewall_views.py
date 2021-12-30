@@ -15,13 +15,15 @@
 
 import copy
 from django.http import Http404
-from vycinity.models import OwnedObject, customer_models, firewall_models, network_models
+from vycinity.models import OwnedObject, customer_models, firewall_models, network_models, change_models, OWNED_OBJECT_STATE_LIVE, OWNED_OBJECT_STATE_PREPARED
 from vycinity.models import firewall_models as models
 from vycinity.serializers import firewall_serializers as serializers
+from vycinity.meta.change_management import ChangedObjectCollection
 from vycinity.views import GenericOwnedObjectList, GenericOwnedObjectDetail, VALIDATION_OK, ValidationResult
 from typing import Any, List
 
 REFERENCED_OBJECT_ACCESS_DENIED = 'Access to referenced object is denied'
+REFERENCED_OBJECT_INVALID_STATE = 'Referenced object is not in a referencable state'
 
 class FirewallList(GenericOwnedObjectList):
     def get_model(self):
@@ -37,19 +39,21 @@ class FirewallList(GenericOwnedObjectList):
                 rtn.append(copy.deepcopy(firewall_raw))
             else:
                 firewall_raw_mod = copy.deepcopy(firewall_raw)
-                network = network_models.Network.objects.get(id=firewall_raw['network'])
+                network = network_models.Network.objects.get(uuid=firewall_raw['network'])
                 if not (network.public or network.owned_by(customer)):
                     del firewall_raw_mod['network']
                 rtn.append(firewall_raw_mod)
         return rtn
 
-    def post_validate(self, object: dict, customer: customer_models.Customer) -> ValidationResult:
-        return FirewallList.set_validate(object)
+    def post_validate(self, object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
+        return FirewallList.set_validate(object, customer, changeset)
 
     @staticmethod
-    def set_validate(object: dict) -> ValidationResult:
+    def set_validate(object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
         if 'network' in object:
-            if not object['network'].owned_by(object['owner']):
+            if not (object['network'].state == OWNED_OBJECT_STATE_LIVE or (object['network'].state == OWNED_OBJECT_STATE_PREPARED and object['network'].change.changeset == changeset)):
+                return ValidationResult(True, {'network': REFERENCED_OBJECT_INVALID_STATE})
+            if not object['network'].owned_by(customer):
                 return ValidationResult(False, {'network': REFERENCED_OBJECT_ACCESS_DENIED})
         return VALIDATION_OK
 
@@ -71,8 +75,8 @@ class FirewallDetailView(GenericOwnedObjectDetail):
                 del firewall_raw_mod['network']
             return firewall_raw_mod
 
-    def put_validate(self, object: dict, customer: customer_models.Customer):
-        return FirewallList.set_validate(object)
+    def put_validate(self, object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet):
+        return FirewallList.set_validate(object, customer, changeset)
 
 class RuleSetList(GenericOwnedObjectList):
     def get_model(self):
@@ -86,23 +90,23 @@ class RuleSetList(GenericOwnedObjectList):
         for object in object_list:
             mod_object = copy.deepcopy(object)
             mod_object['firewalls'] = []
-            for firewall_id in object['firewalls']:
-                firewall = models.Firewall.objects.get(id=firewall_id)
+            for firewall_uuid in object['firewalls']:
+                firewall = models.Firewall.objects.get(uuid=firewall_uuid)
                 if firewall.public or firewall.owned_by(customer):
-                    mod_object['firewalls'].append(firewall_id)
+                    mod_object['firewalls'].append(firewall_uuid)
             rtn.append(mod_object)
         return rtn
 
-    def post_validate(self, object: dict, customer: customer_models.Customer) -> ValidationResult:
-        return RuleSetList.set_allowed(object)
+    def post_validate(self, object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
+        return RuleSetList.set_allowed(object, changeset)
 
     @staticmethod
-    def set_allowed(object: dict) -> ValidationResult:
+    def set_allowed(object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
         rtn = ValidationResult()
         if ('firewalls' in object and isinstance(object['firewalls'], list)):
-            target_visible_customers = object['owner'].get_visible_customers()
+            target_visible_customers = customer.get_visible_customers()
             for firewall in object['firewalls']:
-                if not firewall.public and not firewall.owner in target_visible_customers:
+                if not firewall.public and not firewall.owner in target_visible_customers and (firewall.state == OWNED_OBJECT_STATE_LIVE or (firewall.state == OWNED_OBJECT_STATE_PREPARED and firewall.change.changeset == changeset)):
                     rtn.errors = {'firewall': [REFERENCED_OBJECT_ACCESS_DENIED]}
                     rtn.access_ok = False
                     break
@@ -117,16 +121,16 @@ class RuleSetDetailView(GenericOwnedObjectDetail):
 
     def filter_attributes(self, object: Any, customer: customer_models.Customer):
         filtered_firewalls = []
-        for firewall_id in object['firewalls']:
-            firewall = models.Firewall.objects.get(id=firewall_id)
+        for firewall_uuid in object['firewalls']:
+            firewall = models.Firewall.objects.get(uuid=firewall_uuid)
             if firewall.public or firewall.owned_by(customer):
-                filtered_firewalls.append(firewall_id)
+                filtered_firewalls.append(firewall_uuid)
         rtn = copy.deepcopy(object)
         rtn['firewalls'] = filtered_firewalls
         return rtn
 
-    def put_validate(self, object: dict, customer: customer_models.Customer) -> ValidationResult:
-        return RuleSetList.set_allowed(object)
+    def put_validate(self, object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
+        return RuleSetList.set_allowed(object, customer, changeset)
 
 def set_allowed_by_ruleset(object: dict, customer: customer_models.Customer) -> bool:
     '''
@@ -143,8 +147,8 @@ class BasicRuleList(GenericOwnedObjectList):
     def get_serializer(self):
         return serializers.BasicRuleSerializer
 
-    def post_validate(self, object: dict, customer: customer_models.Customer) -> ValidationResult:
-        return BasicRuleList.set_allowed(object, customer)
+    def post_validate(self, object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
+        return BasicRuleList.set_allowed(object, customer, changeset)
 
     def filter_attributes(self, object_list: List[Any], customer: customer_models.Customer):
         return copy.deepcopy(object_list)
@@ -153,28 +157,26 @@ class BasicRuleList(GenericOwnedObjectList):
         return False
 
     @staticmethod
-    def set_allowed(object: dict, customer: customer_models.Customer) -> ValidationResult:
+    def set_allowed(object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
         rtn = ValidationResult()
         if not set_allowed_by_ruleset(object, customer):
             rtn.access_ok = False
             rtn.errors = {'ruleset':[REFERENCED_OBJECT_ACCESS_DENIED]}
             return rtn
-        if 'source_address' in object and not object['source_address'] is None:
-            if not (object['source_address'].public or object['source_address'].owned_by(customer)):
-                rtn.access_ok = False
-                rtn.errors = {'source_address':[REFERENCED_OBJECT_ACCESS_DENIED]}
-                return rtn
-        if 'destination_address' in object and not object['destination_address'] is None:
-            if not (object['destination_address'].public or object['destination_address'].owned_by(customer)):
-                rtn.access_ok = False
-                rtn.errors = {'destination_address':[REFERENCED_OBJECT_ACCESS_DENIED]}
-                return rtn
-        if 'destination_service' in object and not object['destination_service'] is None:
-            if not (object['destination_service'].public or object['destination_service'].owned_by(customer)):
-                rtn.access_ok = False
-                rtn.errors = {'destination_service':[REFERENCED_OBJECT_ACCESS_DENIED]}
-                return rtn
+        rtn.access_ok = True
+        rtn.errors = {}
+        for attr in ['source_address', 'destination_address', 'destination_service']:
+            if attr in object and not object[attr] is None:
+                if not (object[attr].public or object[attr].owned_by(customer)):
+                    rtn.access_ok = False
+                    rtn.errors[attr] = [REFERENCED_OBJECT_ACCESS_DENIED]
+                    continue
+                if not (object[attr].state == OWNED_OBJECT_STATE_LIVE or (object[attr].state == OWNED_OBJECT_STATE_PREPARED and object[attr].change.changeset == changeset)):
+                    if attr not in rtn.errors:
+                        rtn.errors[attr] = []
+                    rtn.errors[attr].append(REFERENCED_OBJECT_INVALID_STATE)
         return rtn
+
 
 class BasicRuleDetail(GenericOwnedObjectDetail):
     def get_model(self):
@@ -183,8 +185,8 @@ class BasicRuleDetail(GenericOwnedObjectDetail):
     def get_serializer(self):
         return serializers.BasicRuleSerializer
 
-    def put_validate(self, object: Any, customer: customer_models.Customer) -> ValidationResult:
-        return BasicRuleList.set_allowed(object, customer)
+    def put_validate(self, object: Any, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
+        return BasicRuleList.set_allowed(object, customer, changeset)
 
     def filter_attributes(self, object: Any, customer: customer_models.Customer):
         return copy.deepcopy(object)
@@ -199,7 +201,7 @@ class CustomRuleList(GenericOwnedObjectList):
     def get_serializer(self):
         return serializers.CustomRuleSerializer
 
-    def post_validate(self, object: Any, customer: customer_models.Customer) -> bool:
+    def post_validate(self, object: Any, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> bool:
         if set_allowed_by_ruleset(object, customer):
             return VALIDATION_OK
         else:
@@ -218,7 +220,7 @@ class CustomRuleDetail(GenericOwnedObjectDetail):
     def get_serializer(self):
         return serializers.CustomRuleSerializer
 
-    def put_validate(self, object: Any, customer: customer_models.Customer):
+    def put_validate(self, object: Any, customer: customer_models.Customer, changeset: change_models.ChangeSet):
         if set_allowed_by_ruleset(object, customer):
             return VALIDATION_OK
         else:
@@ -237,16 +239,18 @@ class NetworkAddressObjectList(GenericOwnedObjectList):
     def get_serializer(self):
         return serializers.NetworkAddressObjectSerializer
 
-    def post_validate(self, object: dict, customer: customer_models.Customer) -> ValidationResult:
-        return NetworkAddressObjectList.set_allowed_by_network(object, customer)
+    def post_validate(self, object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
+        return NetworkAddressObjectList.set_allowed_by_network(object, customer, changeset)
 
     def filter_attributes(self, object_list: List[Any], customer: customer_models.Customer):
         return copy.deepcopy(object_list)
 
     @staticmethod
-    def set_allowed_by_network(object: dict, customer: customer_models.Customer) -> ValidationResult:
+    def set_allowed_by_network(object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
         if not object['network'].owned_by(customer):
-            return ValidationResult(access_ok=False, errors={'network':REFERENCED_OBJECT_ACCESS_DENIED})
+            return ValidationResult(access_ok=False, errors={'network':[REFERENCED_OBJECT_ACCESS_DENIED]})
+        if not (object['network'].state == OWNED_OBJECT_STATE_LIVE or (object['network'].state == OWNED_OBJECT_STATE_PREPARED and object['network'].change.changeset == changeset)):
+            return ValidationResult(access_ok=False, errors={'network':[REFERENCED_OBJECT_INVALID_STATE]})
         return VALIDATION_OK
 
 
@@ -257,8 +261,8 @@ class NetworkAddressObjectDetail(GenericOwnedObjectDetail):
     def get_serializer(self):
         return serializers.NetworkAddressObjectSerializer
 
-    def put_validate(self, object: dict, customer: customer_models.Customer) -> ValidationResult:
-        return NetworkAddressObjectList.set_allowed_by_network(object, customer)
+    def put_validate(self, object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
+        return NetworkAddressObjectList.set_allowed_by_network(object, customer, changeset)
 
     def filter_attributes(self, object: Any, customer: customer_models.Customer):
         return copy.deepcopy(object)
@@ -270,7 +274,7 @@ class CIDRAddressObjectList(GenericOwnedObjectList):
     def get_serializer(self):
         return serializers.CIDRAddressObjectSerializer
 
-    def post_validate(self, object: Any, customer: customer_models.Customer):
+    def post_validate(self, object: Any, customer: customer_models.Customer, changeset: change_models.ChangeSet):
         return VALIDATION_OK
 
     def filter_attributes(self, object_list: List[Any], customer: customer_models.Customer):
@@ -283,7 +287,7 @@ class CIDRAddressObjectDetail(GenericOwnedObjectDetail):
     def get_serializer(self):
         return serializers.CIDRAddressObjectSerializer
 
-    def put_validate(self, object: Any, customer: customer_models.Customer):
+    def put_validate(self, object: Any, customer: customer_models.Customer, changeset: change_models.ChangeSet):
         return VALIDATION_OK
 
     def filter_attributes(self, object: Any, customer: customer_models.Customer):
@@ -296,7 +300,7 @@ class HostAddressObjectList(GenericOwnedObjectList):
     def get_serializer(self):
         return serializers.HostAddressObjectSerializer
 
-    def post_validate(self, object: Any, customer: customer_models.Customer):
+    def post_validate(self, object: Any, customer: customer_models.Customer, changeset: change_models.ChangeSet):
         return VALIDATION_OK
 
     def filter_attributes(self, object_list: List[Any], customer: customer_models.Customer):
@@ -309,13 +313,13 @@ class HostAddressObjectDetail(GenericOwnedObjectDetail):
     def get_serializer(self):
         return serializers.HostAddressObjectSerializer
 
-    def put_validate(self, object: Any, customer: customer_models.Customer):
+    def put_validate(self, object: Any, customer: customer_models.Customer, changeset: change_models.ChangeSet):
         return VALIDATION_OK
 
     def filter_attributes(self, object: Any, customer: customer_models.Customer):
         return copy.deepcopy(object)
 
-def set_allowed_by_elements(object: Any, customer: customer_models.Customer) -> ValidationResult:
+def set_allowed_by_elements(object: Any, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
     '''
     Prüft die Schreibberechtigung für ein Listen-Objekt, das in seinem 'elements'-Attribut auf ein
     anderes Model verweist.
@@ -323,6 +327,8 @@ def set_allowed_by_elements(object: Any, customer: customer_models.Customer) -> 
     for element in object['elements']:
         if not element.owned_by(customer) or element.public:
             return ValidationResult(access_ok=False, errors={'elements':[REFERENCED_OBJECT_ACCESS_DENIED]})
+        if not (element.state == OWNED_OBJECT_STATE_LIVE or (element.state == OWNED_OBJECT_STATE_PREPARED and element.change.changeset == changeset)):
+            return ValidationResult(access_ok=False, errors={'elements':[REFERENCED_OBJECT_INVALID_STATE]})
     return VALIDATION_OK
 
 def filter_attributes_by_elements(object: Any, customer: customer_models.Customer, dest_model):
@@ -345,8 +351,8 @@ class ListAddressObjectList(GenericOwnedObjectList):
     def get_serializer(self):
         return serializers.ListAddressObjectSerializer
 
-    def post_validate(self, object: dict, customer: customer_models.Customer) -> ValidationResult:
-        return set_allowed_by_elements(object, object['owner'])
+    def post_validate(self, object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
+        return set_allowed_by_elements(object, object['owner'], changeset)
 
     def filter_attributes(self, object_list: List[Any], customer: customer_models.Customer):
         rtn = []
@@ -361,8 +367,8 @@ class ListAddressObjectDetail(GenericOwnedObjectDetail):
     def get_serializer(self):
         return serializers.ListAddressObjectSerializer
 
-    def put_validate(self, object: dict, customer: customer_models.Customer) -> ValidationResult:
-        return set_allowed_by_elements(object, object['owner'])
+    def put_validate(self, object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
+        return set_allowed_by_elements(object, object['owner'], changeset)
 
     def filter_attributes(self, object: List[Any], customer: customer_models.Customer):
         return filter_attributes_by_elements(object, customer, self.get_model())
@@ -374,7 +380,7 @@ class SimpleServiceObjectList(GenericOwnedObjectList):
     def get_serializer(self):
         return serializers.SimpleServiceObjectSerializer
 
-    def post_validate(self, object: dict, customer: customer_models.Customer) -> ValidationResult:
+    def post_validate(self, object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
         return VALIDATION_OK
 
     def filter_attributes(self, object_list: Any, customer: customer_models.Customer):
@@ -387,7 +393,7 @@ class SimpleServiceObjectDetail(GenericOwnedObjectDetail):
     def get_serializer(self):
         return serializers.SimpleServiceObjectSerializer
 
-    def put_validate(self, object: dict, customer: customer_models.Customer) -> ValidationResult:
+    def put_validate(self, object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
         return VALIDATION_OK
 
     def filter_attributes(self, object: Any, customer: customer_models.Customer):
@@ -400,7 +406,7 @@ class RangeServiceObjectList(GenericOwnedObjectList):
     def get_serializer(self):
         return serializers.RangeServiceObjectSerializer
 
-    def post_validate(self, object: dict, customer: customer_models.Customer) -> ValidationResult:
+    def post_validate(self, object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
         return VALIDATION_OK
 
     def filter_attributes(self, object_list: Any, customer: customer_models.Customer):
@@ -413,7 +419,7 @@ class RangeServiceObjectDetail(GenericOwnedObjectDetail):
     def get_serializer(self):
         return serializers.RangeServiceObjectSerializer
 
-    def put_validate(self, object: dict, customer: customer_models.Customer) -> ValidationResult:
+    def put_validate(self, object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
         return VALIDATION_OK
 
     def filter_attributes(self, object: Any, customer: customer_models.Customer):
@@ -426,8 +432,8 @@ class ListServiceObjectList(GenericOwnedObjectList):
     def get_serializer(self):
         return serializers.ListServiceObjectSerializer
 
-    def post_validate(self, object: dict, customer: customer_models.Customer) -> ValidationResult:
-        return set_allowed_by_elements(object, object['owner'])
+    def post_validate(self, object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
+        return set_allowed_by_elements(object, object['owner'], changeset)
 
     def filter_attributes(self, object_list: List[Any], customer: customer_models.Customer):
         rtn = []
@@ -442,8 +448,8 @@ class ListServiceObjectDetail(GenericOwnedObjectDetail):
     def get_serializer(self):
         return serializers.ListServiceObjectSerializer
 
-    def put_validate(self, object: dict, customer: customer_models.Customer) -> ValidationResult:
-        return set_allowed_by_elements(object, object['owner'])
+    def put_validate(self, object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
+        return set_allowed_by_elements(object, object['owner'], changeset)
 
     def filter_attributes(self, object: List[Any], customer: customer_models.Customer):
         return filter_attributes_by_elements(object, customer, self.get_model())

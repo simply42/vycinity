@@ -70,15 +70,15 @@ def get_known_changed_ids(changeset: change_models.ChangeSet) -> ChangedObjectCo
         change: change_models.Change
         model_type = changeable_object_registry.get(change.entity)
         if change.pre is None and change.post is not None:
-            if model_type in rtn.avail:
+            if model_type not in rtn.avail:
                 rtn.avail[model_type] = []
             rtn.avail[model_type].append(change.new_uuid)
         elif change.pre is not None and change.post is not None:
-            if model_type in rtn.avail:
+            if model_type not in rtn.avail:
                 rtn.avail[model_type] = []
             rtn.avail[model_type].append(UUID(change.pre['id']))
         elif change.pre is not None and change.post is None:
-            if model_type in rtn.deleted:
+            if model_type not in rtn.deleted:
                 rtn.deleted[model_type] = []
             rtn.deleted[model_type].append(UUID(change.pre['id']))
     return rtn

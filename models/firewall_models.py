@@ -53,22 +53,19 @@ def validate_port_simpleserviceobject(value):
 validate_port_rangeserviceobject = validate_port_simpleserviceobject
 
 class Firewall(OwnedObject):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     stateful = models.BooleanField()
     name = models.CharField(max_length=64)
-    network = models.ForeignKey(network_models.Network, null=True, on_delete=models.SET_NULL)
+    related_network = models.ForeignKey(network_models.Network, null=True, on_delete=models.SET_NULL)
     default_action_into = models.CharField(max_length=16, choices=ACTIONS)
     default_action_from = models.CharField(max_length=16, choices=ACTIONS)
 
 class RuleSet(OwnedObject):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     firewalls = models.ManyToManyField(Firewall)
     priority = models.IntegerField(validators=[validate_priority_ruleset])
     comment = models.TextField(null=True)
 
 class Rule(SemiOwnedObject):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    ruleset = models.ForeignKey(RuleSet, on_delete=models.CASCADE)
+    related_ruleset = models.ForeignKey(RuleSet, on_delete=models.CASCADE)
     priority = models.IntegerField(validators=[validate_priority_rule])
     comment = models.TextField(null=True)
     disable = models.BooleanField()
@@ -86,11 +83,9 @@ class Rule(SemiOwnedObject):
         return query.filter(models.Q(ruleset__owner__in = customers) | models.Q(ruleset__public = True))
 
 class AddressObject(OwnedObject):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=64)
 
 class ServiceObject(OwnedObject):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=64)
 
 class BasicRule(Rule):
@@ -103,10 +98,10 @@ class BasicRule(Rule):
 class CustomRule(Rule):
     ip_version = models.IntegerField(choices=IP_VERSIONS)
     direction = models.CharField(max_length=4, choices=DIRECTIONS)
-    rule = models.JSONField()
+    rule_definition = models.JSONField()
 
 class NetworkAddressObject(AddressObject):
-    network = models.ForeignKey(network_models.Network, on_delete=models.CASCADE)
+    related_network = models.ForeignKey(network_models.Network, on_delete=models.CASCADE)
 
 class CIDRAddressObject(AddressObject):
     ipv6_network_address = models.GenericIPAddressField(null=True, protocol='IPv6')

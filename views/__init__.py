@@ -22,7 +22,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.serializers import Serializer
-from vycinity.models import customer_models, change_models
+from vycinity.models import OWNED_OBJECT_STATE_PREPARED, customer_models, change_models, OwnedObject, OWNED_OBJECT_STATE_LIVE
 from vycinity.meta.change_management import get_known_changed_ids, ChangedObjectCollection
 from typing import Any, List, Dict, Type
 from uuid import UUID, uuid4
@@ -59,7 +59,7 @@ class GenericOwnedObjectList(APIView, ABC):
     permission_classes = [IsAuthenticated]
 
     @abstractmethod
-    def get_model(self) -> Type['OwnedObject']:
+    def get_model(self) -> Type[OwnedObject]:
         raise NotImplementedError('Model is not set.')
 
     @abstractmethod
@@ -79,7 +79,7 @@ class GenericOwnedObjectList(APIView, ABC):
 
     def get(self, request, format=None):
         model = self.get_model()
-        relevant_changes = []
+        relevant_changes: List[change_models.Change] = []
         if 'changeset' in request.GET:
             try:
                 changeset = change_models.ChangeSet.objects.get(id=request.GET['changeset'])
@@ -91,22 +91,19 @@ class GenericOwnedObjectList(APIView, ABC):
                         break
             except change_models.ChangeSet.DoesNotExist as dne_exc:
                 raise Http404() from dne_exc
-        instances = model.filter_query_by_customers_or_public(model.objects, 
+        instances = model.filter_query_by_customers_or_public(model.objects.filter(state=OWNED_OBJECT_STATE_LIVE), 
             request.user.customer.get_visible_customers())
-        serialized_data = self.get_serializer()(instances, many=True).data
         for relevant_change in relevant_changes:
-            if relevant_change.pre == None and not relevant_change.post is None:
-                additional_object = copy.deepcopy(relevant_change.post)
-                additional_object['id'] = str(relevant_change.new_uuid)
-                serialized_data.append(additional_object)
-            elif not relevant_change.pre is None:
-                for index in range(len(serialized_data)):
-                    if serialized_data[index]['id'] == relevant_change.pre['id']:
-                        if relevant_change.post is None:
-                            serialized_data.pop(index)
-                        else:
-                            serialized_data[index] = copy.deepcopy(relevant_change.post)
-                        break
+            if relevant_change.action == change_models.ACTION_CREATED:
+                instances.append(self.get_model().objects.get(pk=relevant_change.post.pk))
+            elif relevant_change.action == change_models.ACTION_MODIFIED:
+                instances = list(filter(lambda i: relevant_change.pre.uuid != i.uuid, instances))
+                instances.append(self.get_model().objects.get(pk=relevant_change.post.pk))
+            elif relevant_change.action == change_models.ACTION_DELETED:
+                instances = list(filter(lambda i: relevant_change.post.uuid != i.uuid, instances))
+            else:
+                raise ValueError('Action %s is not defined.' % relevant_change.action)
+        serialized_data = self.get_serializer()(instances, many=True).data
 
         return Response(self.filter_attributes(serialized_data, request.user.customer))
 
@@ -114,31 +111,27 @@ class GenericOwnedObjectList(APIView, ABC):
     def post(self, request, format=None):
         serializer = self.get_serializer()(data=request.data)
         changeset = change_models.ChangeSet(owner=request.user.customer, user=request.user, owner_name=request.user.customer.name, user_name=request.user.name)
-        change = change_models.Change(entity=self.get_model().__name__)
+        if 'changeset' in request.GET:
+            changeset_id = UUID(request.GET['changeset'])
+            changeset = change_models.ChangeSet.objects.get(id=changeset_id)
+            if changeset.owner != request.user.customer:
+                return Response(data={'changeset':['access to this changeset is denied']}, status=status.HTTP_403_FORBIDDEN)
+        change = change_models.Change(entity=self.get_model().__name__, action=change_models.ACTION_CREATED)
         
-        serializer_valid = serializer.is_valid()
-        if not serializer_valid:
-            all_invalid_ok = True
-            for field_name in serializer.errors.keys():
-                all_fields = serializer.fields()
-                if field_name in all_fields:
-                    pass
-                all_invalid_ok = False
-            if all_invalid_ok:
-                serializer_valid = True
-        if serializer_valid:
+        if serializer.is_valid():
             if self.validate_owner():
                 visible_customers = request.user.customer.get_visible_customers()
                 if not serializer.validated_data['owner'] in visible_customers:
                     return Response(data={'owner':['access to the owner is denied']}, status=status.HTTP_403_FORBIDDEN)
-            semantic_validation = self.post_validate(serializer.validated_data, request.user.customer)
+            semantic_validation = self.post_validate(serializer.validated_data, request.user.customer, changeset)
             if semantic_validation.is_ok():
-                serialized_object = serializer.data
                 changeset.save()
+                created_obj = serializer.save(state=OWNED_OBJECT_STATE_PREPARED)
                 change.changeset = changeset
-                change.new_uuid = uuid4()
-                change.post = serialized_object
+                change.post = created_obj
                 change.save()
+
+                serialized_object = self.get_serializer()(created_obj).data
                 serialized_object['changeset'] = str(changeset.id)
                 return Response(data=serialized_object, status=status.HTTP_201_CREATED)
             else:
@@ -153,7 +146,7 @@ class GenericOwnedObjectDetail(APIView):
     permission_classes = [IsAuthenticated]
 
     @abstractmethod
-    def get_model(self) -> Type['OwnedObject']:
+    def get_model(self) -> Type[OwnedObject]:
         raise NotImplementedError('Model is not set.')
 
     @abstractmethod
@@ -172,7 +165,7 @@ class GenericOwnedObjectDetail(APIView):
         return True
 
     def get(self, request, id, format=None):
-        serialized_data = None
+        instance = None
         if 'changeset' in request.GET:
             try:
                 changeset = change_models.ChangeSet.objects.get(id=request.GET['changeset'])
@@ -180,19 +173,19 @@ class GenericOwnedObjectDetail(APIView):
                     return HttpResponseForbidden()
                 for change in changeset.changes.all():
                     thisname = self.get_model().__name__
-                    if change.entity == thisname and (change.new_uuid == id or (not change.pre is None and UUID(change.pre['id']) == id)):
-                        serialized_data = change.post
+                    if change.entity == thisname and change.action in [change_models.ACTION_CREATED, change_models.ACTION_MODIFIED] and change.post.uuid == id:
+                        instance = self.get_model().objects.get(pk=change.post.pk)
                         break
             except change_models.ChangeSet.DoesNotExist as dne_exc:
                 raise Http404() from dne_exc
-        if serialized_data is None:
+        if instance is None:
             try:
-                instance = self.get_model().objects.get(id=id)
-                if not instance.owned_by(request.user.customer) and not instance.public:
-                    return HttpResponseForbidden()
-                serialized_data = self.get_serializer()(instance).data
+                instance = self.get_model().objects.get(uuid=id, state=OWNED_OBJECT_STATE_LIVE)
             except (self.get_model().DoesNotExist, change_models.ChangeSet.DoesNotExist) as dne_exc:
                 raise Http404() from dne_exc
+        if not instance.owned_by(request.user.customer) and not instance.public:
+            return HttpResponseForbidden()
+        serialized_data = self.get_serializer()(instance).data
         return Response(self.filter_attributes(serialized_data, request.user.customer))
 
     def put(self, request, id, format=None):

@@ -15,11 +15,36 @@
 
 from abc import abstractstaticmethod
 from django.db import models
+from django.db.models import constraints
 from rest_framework import serializers
-from vycinity.models import customer_models
+from vycinity.models import customer_models, change_models
 from typing import Any, List
+import uuid
 
-class AbstractOwnedObject:
+OWNED_OBJECT_STATE_PREPARED = 'prepared'
+OWNED_OBJECT_STATE_LIVE = 'live'
+OWNED_OBJECT_STATE_OUTDATED = 'outdated'
+OWNED_OBJECT_STATE_DELETED = 'deleted'
+OWNED_OBJECT_STATES = [
+    (OWNED_OBJECT_STATE_PREPARED, OWNED_OBJECT_STATE_PREPARED),
+    (OWNED_OBJECT_STATE_LIVE, OWNED_OBJECT_STATE_LIVE),
+    (OWNED_OBJECT_STATE_OUTDATED, OWNED_OBJECT_STATE_OUTDATED),
+    (OWNED_OBJECT_STATE_DELETED, OWNED_OBJECT_STATE_DELETED)
+]
+
+class AbstractOwnedObject(models.Model):
+    '''
+    Abstract base model.
+    '''
+
+    uuid = models.UUIDField(default=uuid.uuid4, editable=False)
+    state = models.CharField(choices=OWNED_OBJECT_STATES, max_length=10)
+
+    class Meta:
+        constraints = [
+            constraints.UniqueConstraint(fields=['uuid', 'state'], name='%(app_label)s_max_one_%(class)s_live', condition=models.Q(state=OWNED_OBJECT_STATE_LIVE))
+        ]
+
     def owned_by(self, customer: customer_models.Customer):
         '''
         Checks, whether the given customer owns this object in a implicit way. The implementing
@@ -49,6 +74,17 @@ class AbstractOwnedObject:
         '''
         raise NotImplementedError('filter_query_by_customers not yet implemented')
 
+    @staticmethod
+    def filter_query_by_liveness_or_changeset(query: Any, changeset: change_models.ChangeSet):
+        '''
+        Filters a query by liveness or the given changeset.
+
+        params:
+            query: the query to extend.
+            changeset: the changeset which also may contain the target object.
+        '''
+        return query.filter(models.Q(state=OWNED_OBJECT_STATE_LIVE) | models.Q(change__changeset=changeset))
+
     @abstractstaticmethod
     def get_serializer() -> serializers.Serializer:
         '''
@@ -59,7 +95,7 @@ class AbstractOwnedObject:
         raise NotImplementedError('get_serializer not yet implemented')
 
 
-class OwnedObject(models.Model, AbstractOwnedObject):
+class OwnedObject(AbstractOwnedObject):
     '''
     Abstract object describing relation to a `Customer`.
     '''
@@ -75,7 +111,7 @@ class OwnedObject(models.Model, AbstractOwnedObject):
         return query.filter(models.Q(public=True) | models.Q(owner__in=customers))
 
 
-class SemiOwnedObject(models.Model, AbstractOwnedObject):
+class SemiOwnedObject(AbstractOwnedObject):
     '''
     Abstract object for approximating the relation to a `Customer`. This is required when the
     object itself does not have a direct relation to a `Customer`, but a related has.

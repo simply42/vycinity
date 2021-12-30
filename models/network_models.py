@@ -34,7 +34,6 @@ def validate_layer2_id(value):
         raise ValidationError('Layer2 network id is not in valid range 1-4093')
 
 class Network(OwnedObject):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     ipv4_network_address = models.GenericIPAddressField(null=True, unique=True, protocol='IPv4')
     ipv4_network_bits = models.IntegerField(null=True, validators=[validate_ipv4_network_bits])
     ipv6_network_address = models.GenericIPAddressField(null=True, unique=True, protocol='IPv6')

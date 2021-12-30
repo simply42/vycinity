@@ -17,6 +17,15 @@ import uuid
 from django.db import models
 from vycinity.models import customer_models
 
+ACTION_CREATED = 'created'
+ACTION_MODIFIED = 'modified'
+ACTION_DELETED = 'deleted'
+CHANGE_ACTIONS = [
+    (ACTION_CREATED, ACTION_CREATED),
+    (ACTION_MODIFIED, ACTION_MODIFIED),
+    (ACTION_DELETED, ACTION_DELETED)
+]
+
 class ChangeSet(models.Model):
     '''
     ChangeSet describes a list of changes to different entities.
@@ -32,14 +41,14 @@ class ChangeSet(models.Model):
 
 class Change(models.Model):
     '''
-    A Change describes a changed entity in serialized "diff" style. If pre or post are set, the
-    entity is assumed to be created or deleted.
+    A Change describes a changed entity by linking to a previous version with a newer one. The
+    deletion-change is a bit special, as the pre and post may be the same entities.
     '''
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     changeset = models.ForeignKey(ChangeSet, related_name='changes', on_delete=models.CASCADE)
     entity = models.CharField(max_length=255)
-    pre = models.JSONField(null=True)
-    post = models.JSONField(null=True)
-    new_uuid = models.UUIDField(null=True)
+    pre = models.ForeignKey('vycinity.AbstractOwnedObject', null=True, related_name='+', on_delete=models.SET_NULL)
+    post = models.OneToOneField('vycinity.AbstractOwnedObject', related_name='change', on_delete=models.CASCADE)
+    action = models.CharField(max_length=8, choices=CHANGE_ACTIONS)
     dependencies = models.ManyToManyField(to='Change', related_name='dependents')
     
