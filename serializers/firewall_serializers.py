@@ -78,7 +78,7 @@ class BasicRuleSerializer(serializers.ModelSerializer):
         model = firewall_models.BasicRule
         fields = ['uuid', 'ruleset', 'priority', 'comment', 'disable', 'source_address', 'destination_address', 'destination_service', 'action', 'log']
         read_only_fields = ['uuid']
-    ruleset = OwnedObjectRelatedField(queryset=firewall_models.RuleSet.objects.all(), required=True)
+    ruleset = OwnedObjectRelatedField(source='related_ruleset', queryset=firewall_models.RuleSet.objects.all(), required=True)
     source_address = OwnedObjectRelatedField(queryset=firewall_models.AddressObject.objects.all(), required=False)
     destination_address = OwnedObjectRelatedField(queryset=firewall_models.AddressObject.objects.all(), required=True)
     destination_service = OwnedObjectRelatedField(queryset=firewall_models.ServiceObject.objects.all(), required=False)

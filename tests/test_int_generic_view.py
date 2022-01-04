@@ -18,7 +18,7 @@ import ipaddress
 import uuid
 from django.db.models.query_utils import Q
 from django.test import Client, TestCase
-from vycinity.models import customer_models, firewall_models, change_models, network_models, OWNED_OBJECT_STATE_LIVE, OWNED_OBJECT_STATE_PREPARED
+from vycinity.models import OWNED_OBJECT_STATE_DELETED, customer_models, firewall_models, change_models, network_models, OWNED_OBJECT_STATE_LIVE, OWNED_OBJECT_STATE_PREPARED
 from vycinity.serializers import firewall_serializers
 from django.contrib.auth.hashers import make_password
 from base64 import b64encode
@@ -261,12 +261,12 @@ class GenericAPITest(TestCase):
             if change.post.uuid == uuid.UUID(content['uuid']):
                 found_new_change = True
                 self.assertIsNone(change.pre)
-                self.assertEqual(change_models.ACTION_CREATE, change.action)
-                self.assertEqual(ruleset_in_changeset, change.post.rule.ruleset)
+                self.assertEqual(change_models.ACTION_CREATED, change.action)
+                self.assertEqual(ruleset_in_changeset.pk, change.post.rule.related_ruleset.pk)
                 self.assertEqual(10, change.post.rule.priority)
-                self.assertEqual(any_address_object, change.post.rule.destination_address)
+                self.assertEqual(any_address_object.pk, change.post.rule.basicrule.destination_address.pk)
                 self.assertEqual(content['disable'], change.post.rule.disable)
-                self.assertEqual(content['log'], change.post.rule.log)
+                self.assertEqual(content['log'], change.post.rule.basicrule.log)
                 break
         self.assertTrue(found_new_change)
 
@@ -283,12 +283,12 @@ class GenericAPITest(TestCase):
         sub_user_pw = 'testpw2'
         customer_models.LocalUserAuth.objects.create(user=sub_user, auth=make_password(sub_user_pw))
         sub_auth = 'Basic ' + b64encode((sub_user.name + ':' + sub_user_pw).encode('utf-8')).decode('ascii')
-        sub_customer_ruleset = firewall_models.RuleSet.objects.create(comment='Sub-customer ruleset', priority=12, owner=sub_customer, public=False)
+        sub_customer_ruleset = firewall_models.RuleSet.objects.create(comment='Sub-customer ruleset', priority=12, owner=sub_customer, public=False, state=OWNED_OBJECT_STATE_LIVE)
         c = Client()
 
         # correct case
-        ruleset_before_modification = firewall_serializers.RuleSetSerializer(sub_customer_ruleset).data
-        response = c.put('/api/v1/rulesets/%s' % sub_customer_ruleset.id, json.dumps({'comment': 'sub customer ruleset 2', 'owner': str(sub_customer.id), 'priority': 12, 'public': False}), content_type='application/json', HTTP_AUTHORIZATION=self.authorization)
+        #ruleset_before_modification = firewall_serializers.RuleSetSerializer(sub_customer_ruleset)
+        response = c.put('/api/v1/rulesets/%s' % sub_customer_ruleset.uuid, json.dumps({'comment': 'sub customer ruleset 2', 'owner': str(sub_customer.id), 'priority': 12, 'public': False}), content_type='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(200, response.status_code)
         content = response.json()
         self.assertTrue(isinstance(content, dict))
@@ -296,21 +296,21 @@ class GenericAPITest(TestCase):
         self.assertEqual(str(sub_customer.id), content['owner'])
         self.assertEqual(12, content['priority'])
         self.assertFalse(content['public'])
-        self.assertFalse('firewalls' in content)
+        self.assertEqual(0, len(content['firewalls']))
         self.assertIsNotNone(content['changeset'])
-        new_changeset = change_models.ChangeSet.objects.get(id=content['changeset'])
+        new_changeset = change_models.ChangeSet.objects.get(id=uuid.UUID(content['changeset']))
         self.assertEqual(1, new_changeset.changes.count())
         change_in_set = new_changeset.changes.first()
-        self.assertEqual(ruleset_before_modification, change_in_set.pre)
-        self.assertEqual(content['comment'], change_in_set.post['comment'])
-        self.assertEqual(content['owner'], change_in_set.post['owner'])
-        self.assertFalse('firewalls' in change_in_set.post)
-        self.assertEqual(content['public'], change_in_set.post['public'])
-        self.assertEqual(content['priority'], change_in_set.post['priority'])
+        self.assertEqual(sub_customer_ruleset.pk, change_in_set.pre.pk)
+        self.assertEqual(content['comment'], change_in_set.post.ruleset.comment)
+        self.assertEqual(content['owner'], str(change_in_set.post.ruleset.owner.id))
+        self.assertEqual(0, change_in_set.post.ruleset.firewalls.count())
+        self.assertEqual(content['public'], change_in_set.post.ruleset.public)
+        self.assertEqual(content['priority'], change_in_set.post.ruleset.priority)
 
         # correct case for already modified ruleset
-        ruleset_before_modification = firewall_serializers.RuleSetSerializer(self.private_ruleset_main_user).data
-        response = c.put('/api/v1/rulesets/%s?changeset=%s' % (self.private_ruleset_main_user.id, self.changeset_ruleset_main_user.id), json.dumps({'comment': 'main private ruleset modified again', 'owner': str(self.private_ruleset_main_user.owner.id), 'priority': 27, 'public': False}), content_type='application/json', HTTP_AUTHORIZATION=self.authorization)
+        #ruleset_before_modification = firewall_serializers.RuleSetSerializer(self.private_ruleset_main_user).data
+        response = c.put('/api/v1/rulesets/%s?changeset=%s' % (self.private_ruleset_main_user.uuid, self.changeset_ruleset_main_user.id), json.dumps({'comment': 'main private ruleset modified again', 'owner': str(self.private_ruleset_main_user.owner.id), 'priority': 27, 'public': False}), content_type='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(200, response.status_code)
         content = response.json()
         self.assertTrue(isinstance(content, dict))
@@ -318,49 +318,52 @@ class GenericAPITest(TestCase):
         self.assertEqual(str(self.private_ruleset_main_user.owner.id), content['owner'])
         self.assertEqual(27, content['priority'])
         self.assertFalse(content['public'])
-        self.assertFalse('firewalls' in content)
+        self.assertListEqual([str(self.private_ruleset_main_user.firewalls.first().uuid)], content['firewalls'])
         self.assertEqual(str(self.changeset_ruleset_main_user.id), content['changeset'])
         modified_changeset = change_models.ChangeSet.objects.get(id=self.changeset_ruleset_main_user.id)
         self.assertEqual(1, modified_changeset.changes.count())
         change_in_modified_set = modified_changeset.changes.first()
-        self.assertEqual(ruleset_before_modification, change_in_modified_set.pre)
-        self.assertEqual(content['comment'], change_in_modified_set.post['comment'])
-        self.assertEqual(content['owner'], change_in_modified_set.post['owner'])
-        self.assertFalse('firewalls' in change_in_modified_set.post)
-        self.assertEqual(content['public'], change_in_modified_set.post['public'])
-        self.assertEqual(content['priority'], change_in_modified_set.post['priority'])
+        self.assertEqual(self.private_ruleset_main_user.pk, change_in_modified_set.pre.pk)
+        self.assertEqual(content['comment'], change_in_modified_set.post.ruleset.comment)
+        self.assertEqual(content['owner'], str(change_in_modified_set.post.ruleset.owner.id))
+        self.assertEqual(1, change_in_modified_set.post.ruleset.firewalls.count())
+        self.assertEqual(self.private_ruleset_main_user.firewalls.first().uuid, change_in_modified_set.post.ruleset.firewalls.first().uuid)
+        self.assertEqual(content['public'], change_in_modified_set.post.ruleset.public)
+        self.assertEqual(content['priority'], change_in_modified_set.post.ruleset.priority)
 
         # wrong case: sub customer must not use firewall which is not accessible
-        response = c.put('/api/v1/rulesets/%s' % sub_customer_ruleset.id, json.dumps({'comment': 'sub customer ruleset 2', 'owner': str(sub_customer.id), 'priority': 12, 'public': False, 'firewalls':[str(self.firewall_main_user.id)]}), content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
+        response = c.put('/api/v1/rulesets/%s' % sub_customer_ruleset.uuid, json.dumps({'comment': 'sub customer ruleset 2', 'owner': str(sub_customer.id), 'priority': 12, 'public': False, 'firewalls':[str(self.firewall_main_user.uuid)]}), content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(403, response.status_code)
         
         # wrong case: other customers ruleset must not be changable
-        response = c.put('/api/v1/rulesets/%s' % self.private_ruleset_other_user.id, json.dumps({'comment': 'my ruleset 2', 'owner': str(self.other_customer.id), 'priority': 10, 'public': False, 'firewalls':[str(self.firewall_other_user.id)]}), content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
+        response = c.put('/api/v1/rulesets/%s' % self.private_ruleset_other_user.uuid, json.dumps({'comment': 'my ruleset 2', 'owner': str(self.other_customer.id), 'priority': 10, 'public': False, 'firewalls':[str(self.firewall_other_user.uuid)]}), content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(403, response.status_code)
         
         # wrong case: ruleset must not be transferable to customer which is not accessible
-        response = c.put('/api/v1/rulesets/%s' % self.private_ruleset_main_user.id, json.dumps({'comment': 'my ruleset 2', 'owner': str(self.other_customer.id), 'priority': 10, 'public': False, 'firewalls':[str(self.firewall_other_user.id)]}), content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
+        response = c.put('/api/v1/rulesets/%s' % self.private_ruleset_main_user.uuid, json.dumps({'comment': 'my ruleset 2', 'owner': str(self.other_customer.id), 'priority': 10, 'public': False, 'firewalls':[str(self.firewall_other_user.uuid)]}), content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(403, response.status_code)
         
         # wrong case: ruleset must be consistent
-        response = c.put('/api/v1/rulesets/%s' % self.private_ruleset_main_user.id, json.dumps({'comment': 'sub customer ruleset 2', 'owner': str(self.main_customer.id), 'priority': 12, 'public': False, 'firewalls': [str(uuid.uuid4())]}), content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
+        response = c.put('/api/v1/rulesets/%s' % self.private_ruleset_main_user.uuid, json.dumps({'comment': 'sub customer ruleset 2', 'owner': str(self.main_customer.id), 'priority': 12, 'public': False, 'firewalls': [str(uuid.uuid4())]}), content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(400, response.status_code)
 
     def test_delete_customer(self):
         c = Client()
 
         # correct case
-        own_private_ruleset_id = self.private_ruleset_main_user.id
+        own_private_ruleset_id = self.private_ruleset_main_user.uuid
         response = c.delete('/api/v1/rulesets/%s' % own_private_ruleset_id, HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(200, response.status_code)
         content = response.json()
         self.assertIsNotNone(content['changeset'])
         changeset_containing_change = change_models.ChangeSet.objects.get(id=content['changeset'])
-        self.assertEqual(1, len(changeset_containing_change.changes))
-        self.assertEqual('Ruleset', changeset_containing_change.changes[0].entity)
-        self.assertIsNone(changeset_containing_change.changes[0].post)
+        self.assertEqual(1, changeset_containing_change.changes.count())
+        self.assertEqual(firewall_models.RuleSet.__name__, changeset_containing_change.changes.first().entity)
+        self.assertNotEqual(self.private_ruleset_main_user.pk, changeset_containing_change.changes.first().post.pk)
+        self.assertEqual(OWNED_OBJECT_STATE_DELETED, changeset_containing_change.changes.first().post.state)
+        self.assertEqual(self.private_ruleset_main_user.pk, changeset_containing_change.changes.first().pre.pk)
         
         # wrong case: rulesets of other customer must not be deleted
-        other_customers_public_ruleset_id = self.public_ruleset_other_user.id
+        other_customers_public_ruleset_id = self.public_ruleset_other_user.uuid
         response = c.delete('/api/v1/rulesets/%s' % other_customers_public_ruleset_id, HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(403, response.status_code)

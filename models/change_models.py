@@ -48,7 +48,7 @@ class Change(models.Model):
     changeset = models.ForeignKey(ChangeSet, related_name='changes', on_delete=models.CASCADE)
     entity = models.CharField(max_length=255)
     pre = models.ForeignKey('vycinity.AbstractOwnedObject', null=True, related_name='+', on_delete=models.SET_NULL)
-    post = models.OneToOneField('vycinity.AbstractOwnedObject', related_name='change', on_delete=models.CASCADE)
+    post = models.ForeignKey('vycinity.AbstractOwnedObject', related_name='change', on_delete=models.CASCADE)
     action = models.CharField(max_length=8, choices=CHANGE_ACTIONS)
     dependencies = models.ManyToManyField(to='Change', related_name='dependents')
     

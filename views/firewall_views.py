@@ -22,6 +22,7 @@ from vycinity.meta.change_management import ChangedObjectCollection
 from vycinity.views import GenericOwnedObjectList, GenericOwnedObjectDetail, VALIDATION_OK, ValidationResult
 from typing import Any, List
 
+REFERENCED_OBJECT_NOT_FOUND = 'Referenced object not found'
 REFERENCED_OBJECT_ACCESS_DENIED = 'Access to referenced object is denied'
 REFERENCED_OBJECT_INVALID_STATE = 'Referenced object is not in a referencable state'
 
@@ -98,17 +99,28 @@ class RuleSetList(GenericOwnedObjectList):
         return rtn
 
     def post_validate(self, object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
-        return RuleSetList.set_allowed(object, changeset)
+        return RuleSetList.set_allowed(object, customer, changeset)
 
     @staticmethod
     def set_allowed(object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
         rtn = ValidationResult()
+        if object['owner'] not in customer.get_visible_customers():
+            rtn.errors = {'owner': [REFERENCED_OBJECT_ACCESS_DENIED]}
+            rtn.access_ok = False
         if ('firewalls' in object and isinstance(object['firewalls'], list)):
-            target_visible_customers = customer.get_visible_customers()
+            target_visible_customers = object['owner'].get_visible_customers()
             for firewall in object['firewalls']:
-                if not firewall.public and not firewall.owner in target_visible_customers and (firewall.state == OWNED_OBJECT_STATE_LIVE or (firewall.state == OWNED_OBJECT_STATE_PREPARED and firewall.change.changeset == changeset)):
+                if firewall is None:
+                    rtn.errors = {'firewall': [REFERENCED_OBJECT_NOT_FOUND]}
+                    rtn.access_ok = True
+                    break
+                if not (firewall.public or firewall.owner in target_visible_customers):
                     rtn.errors = {'firewall': [REFERENCED_OBJECT_ACCESS_DENIED]}
                     rtn.access_ok = False
+                    break
+                elif not (firewall.state == OWNED_OBJECT_STATE_LIVE or (firewall.state == OWNED_OBJECT_STATE_PREPARED and firewall.change.changeset == changeset)):
+                    rtn.errors = {'firewall': [REFERENCED_OBJECT_INVALID_STATE]}
+                    rtn.access_ok = True
                     break
         return rtn
 
@@ -136,7 +148,7 @@ def set_allowed_by_ruleset(object: dict, customer: customer_models.Customer) -> 
     '''
     Prüfe Schreib-Recht für angehängte RuleSets in basis-validierten dicts.
     '''
-    if not object['ruleset'].owned_by(customer):
+    if not object['related_ruleset'].owned_by(customer):
         return False
     return True
 

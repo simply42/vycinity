@@ -81,6 +81,6 @@ class ChangeableObjectRegistry(object):
                 if changeable_object_type.list_view:
                     rtn.append(path(changeable_object_type.path, changeable_object_type.list_view.as_view()))
                 if changeable_object_type.single_view:
-                    rtn.append(path(changeable_object_type.path + '/<uuid:id>', changeable_object_type.single_view.as_view()))
+                    rtn.append(path(changeable_object_type.path + '/<uuid:uuid>', changeable_object_type.single_view.as_view()))
         return rtn
 
