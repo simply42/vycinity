@@ -14,19 +14,18 @@
 # along with VyCinity. If not, see <https://www.gnu.org/licenses/>.
 
 from abc import ABC, abstractmethod
-import copy
 from django.http import Http404, HttpResponseForbidden
 from rest_framework import status
-from rest_framework import serializers
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.serializers import Serializer
 from vycinity.models import OWNED_OBJECT_STATE_DELETED, OWNED_OBJECT_STATE_PREPARED, customer_models, change_models, OwnedObject, OWNED_OBJECT_STATE_LIVE
-from vycinity.meta.change_management import get_known_changed_ids, ChangedObjectCollection
 from typing import Any, List, Dict, Type
-from uuid import UUID, uuid4
+from uuid import UUID
 
+
+CHANGESET_APPLIED_ERROR = 'Changeset is already applied.'
 
 class ValidationResult:
     '''
@@ -116,6 +115,8 @@ class GenericOwnedObjectList(APIView, ABC):
             changeset = change_models.ChangeSet.objects.get(id=changeset_id)
             if changeset.owner != request.user.customer:
                 return Response(data={'changeset':['access to this changeset is denied']}, status=status.HTTP_403_FORBIDDEN)
+            if changeset.applied is not None:
+                    return Response({'changeset': CHANGESET_APPLIED_ERROR}, status=status.HTTP_400_BAD_REQUEST)
         change = change_models.Change(entity=self.get_model().__name__, action=change_models.ACTION_CREATED)
         
         if serializer.is_valid():
@@ -197,6 +198,8 @@ class GenericOwnedObjectDetail(APIView):
                 changeset = change_models.ChangeSet.objects.get(id=request.GET['changeset'])
                 if not changeset.owner in request.user.customer.get_visible_customers():
                     return HttpResponseForbidden()
+                if changeset.applied is not None:
+                    return Response({'changeset': CHANGESET_APPLIED_ERROR}, status=status.HTTP_400_BAD_REQUEST)
                 thisname = self.get_model().__name__
                 for actual_change in changeset.changes.all():
                     if actual_change.entity == thisname and actual_change.action in [change_models.ACTION_CREATED, change_models.ACTION_MODIFIED] and actual_change.post.uuid == uuid:
@@ -253,6 +256,8 @@ class GenericOwnedObjectDetail(APIView):
                 changeset = change_models.ChangeSet.objects.get(id=request.GET['changeset'])
                 if not changeset.owner in request.user.customer.get_visible_customers():
                     return HttpResponseForbidden()
+                if changeset.applied is not None:
+                    return Response({'changeset': CHANGESET_APPLIED_ERROR}, status=status.HTTP_400_BAD_REQUEST)
                 thisname = self.get_model().__name__
                 for actual_change in changeset.changes.all():
                     if actual_change.entity == thisname and actual_change.post.uuid == uuid:

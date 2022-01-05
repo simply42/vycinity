@@ -14,6 +14,7 @@
 # along with VyCinity. If not, see <https://www.gnu.org/licenses/>.
 
 import copy
+from datetime import datetime, timezone
 import ipaddress
 import uuid
 from django.db.models.query_utils import Q
@@ -235,6 +236,15 @@ class GenericAPITest(TestCase):
         response = c.post('/api/v1/rulesets', {'comment': 'yet another ruleset', 'owner': str(self.main_customer.id), 'firewalls': [str(self.firewall_other_user.uuid)], 'public': False, 'priority': 13}, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(403, response.status_code)
 
+        # wrong case: changeset may not be changed after application
+        applied_changeset = change_models.ChangeSet.objects.create(owner=self.main_customer, owner_name=self.main_customer.name, user=self.main_user, user_name=self.main_user.name)
+        applied_changeset.applied = datetime.now(timezone.utc)
+        applied_changeset.save()
+        response = c.post('/api/v1/rulesets?changeset=%s' % applied_changeset.id, {'comment': 'just another ruleset', 'owner': self.main_customer.id, 'firewalls': [str(self.firewall_main_user.uuid)], 'public': False, 'priority': 13}, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
+        self.assertEqual(400, response.status_code)
+        applied_changeset.refresh_from_db()
+        self.assertEqual(0, applied_changeset.changes.count())
+
     def test_post_rule_in_new_ruleset(self):
         c = Client()
 
@@ -275,7 +285,6 @@ class GenericAPITest(TestCase):
         self.changeset_ruleset_main_user.save()
         response = c.post('/api/v1/rules/basic?changeset={}'.format(self.changeset_ruleset_main_user.id), {'ruleset': str(self.private_ruleset_main_user.id), 'priority': 10, 'disable': False, 'destination_address': str(any_address_object.id), 'log': False, 'action': 'accept'}, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(400, response.status_code)
-        
         
     def test_put_ruleset(self):
         sub_customer = customer_models.Customer.objects.create(name='Test Sub customer', parent_customer=self.main_customer)
@@ -347,6 +356,16 @@ class GenericAPITest(TestCase):
         response = c.put('/api/v1/rulesets/%s' % self.private_ruleset_main_user.uuid, json.dumps({'comment': 'sub customer ruleset 2', 'owner': str(self.main_customer.id), 'priority': 12, 'public': False, 'firewalls': [str(uuid.uuid4())]}), content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(400, response.status_code)
 
+        # wrong case: changeset may not be changed after application
+        applied_changeset = change_models.ChangeSet.objects.create(owner=self.main_customer, owner_name=self.main_customer.name, user=self.main_user, user_name=self.main_user.name)
+        applied_changeset.applied = datetime.now(timezone.utc)
+        applied_changeset.save()
+        response = c.put('/api/v1/rulesets/%s?changeset=%s' % (self.private_ruleset_main_user.uuid, applied_changeset.id), json.dumps({'comment': 'sub customer ruleset 2', 'owner': str(self.main_customer.id), 'priority': 12, 'public': False, 'firewalls': []}), content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
+        self.assertEqual(400, response.status_code)
+        applied_changeset.refresh_from_db()
+        self.assertEqual(0, applied_changeset.changes.count())
+
+
     def test_delete_customer(self):
         c = Client()
 
@@ -367,3 +386,12 @@ class GenericAPITest(TestCase):
         other_customers_public_ruleset_id = self.public_ruleset_other_user.uuid
         response = c.delete('/api/v1/rulesets/%s' % other_customers_public_ruleset_id, HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(403, response.status_code)
+
+        # wrong case: changeset may not be changed after application
+        applied_changeset = change_models.ChangeSet.objects.create(owner=self.main_customer, owner_name=self.main_customer.name, user=self.main_user, user_name=self.main_user.name)
+        applied_changeset.applied = datetime.now(timezone.utc)
+        applied_changeset.save()
+        response = c.delete('/api/v1/rulesets/%s?changeset=%s' % (self.private_ruleset_main_user.uuid, applied_changeset.id), HTTP_AUTHORIZATION=self.authorization)
+        self.assertEqual(400, response.status_code)
+        applied_changeset.refresh_from_db()
+        self.assertEqual(0, applied_changeset.changes.count())
