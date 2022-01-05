@@ -17,7 +17,7 @@ import copy
 import uuid
 from django.test import Client, TestCase
 import vycinity.views
-from vycinity.models import customer_models, firewall_models, change_models, network_models
+from vycinity.models import OWNED_OBJECT_STATE_LIVE, OWNED_OBJECT_STATE_OUTDATED, OWNED_OBJECT_STATE_PREPARED, customer_models, firewall_models, change_models, network_models
 from vycinity.serializers import firewall_serializers
 import vycinity.meta.change_management
 from django.contrib.auth.hashers import make_password
@@ -35,42 +35,71 @@ class ChangeManagementTest(TestCase):
     def setUpTestData(cls):
         cls.main_customer = customer_models.Customer.objects.create(name = 'Test-Root customer')
         cls.main_user = customer_models.User.objects.create(name='testuser', customer=cls.main_customer)
-        cls.firewall_main_user = firewall_models.Firewall.objects.create(name='main firewall', stateful=False, default_action_into=firewall_models.ACTION_ACCEPT, default_action_from=firewall_models.ACTION_ACCEPT, owner=cls.main_customer, public=False)
-        cls.private_ruleset_main_user = firewall_models.RuleSet.objects.create(comment='main private ruleset', priority=10, owner=cls.main_customer, public=False)
+        cls.firewall_main_user = firewall_models.Firewall.objects.create(name='main firewall', stateful=False, default_action_into=firewall_models.ACTION_ACCEPT, default_action_from=firewall_models.ACTION_ACCEPT, owner=cls.main_customer, public=False, state=OWNED_OBJECT_STATE_LIVE)
+        cls.private_ruleset_main_user = firewall_models.RuleSet.objects.create(comment='main private ruleset', priority=10, owner=cls.main_customer, public=False, state=OWNED_OBJECT_STATE_LIVE)
         cls.private_ruleset_main_user.firewalls.set([cls.firewall_main_user])
         cls.changeset_ruleset_main_user = change_models.ChangeSet.objects.create(owner=cls.main_customer, user=cls.main_user, owner_name=cls.main_customer.name, user_name=cls.main_user.name)
-        serialized_ruleset_main_user = firewall_serializers.RuleSetSerializer(cls.private_ruleset_main_user).data
-        serialized_ruleset_main_user_modified = copy.deepcopy(serialized_ruleset_main_user)
-        serialized_ruleset_main_user_modified['comment'] = 'main private ruleset modified'
-        cls.change_ruleset_main_user_name = change_models.Change.objects.create(changeset=cls.changeset_ruleset_main_user, entity='RuleSet', pre=serialized_ruleset_main_user, post=serialized_ruleset_main_user_modified)
+        cls.ruleset_main_user_modified = firewall_models.RuleSet.objects.get(pk=cls.private_ruleset_main_user.pk)
+        cls.ruleset_main_user_modified.id = None
+        cls.ruleset_main_user_modified.pk = None
+        cls.ruleset_main_user_modified._state.adding = True
+        cls.ruleset_main_user_modified.state = OWNED_OBJECT_STATE_PREPARED
+        cls.ruleset_main_user_modified.comment = 'main private ruleset modified'
+        cls.ruleset_main_user_modified.save()
+        cls.ruleset_main_user_modified.firewalls.set([cls.firewall_main_user])
+        cls.change_ruleset_main_user_name = change_models.Change.objects.create(changeset=cls.changeset_ruleset_main_user, entity='RuleSet', pre=cls.private_ruleset_main_user, post=cls.ruleset_main_user_modified, action=change_models.ACTION_MODIFIED)
 
    
     def test_apply_changeset(self):
+        # Positive test with simple changeset
         vycinity.meta.change_management.apply_changeset(self.changeset_ruleset_main_user)
-        changed_ruleset = firewall_models.RuleSet.objects.get(id=uuid.UUID(self.change_ruleset_main_user_name.pre['id']))
-        self.assertEquals(self.private_ruleset_main_user.owner, changed_ruleset.owner)
-        self.assertEquals(self.private_ruleset_main_user.public, changed_ruleset.public)
-        self.assertEquals(self.private_ruleset_main_user.priority, changed_ruleset.priority)
-        self.assertEquals('main private ruleset modified', changed_ruleset.comment)
+        changed_ruleset = firewall_models.RuleSet.objects.get(uuid=self.change_ruleset_main_user_name.pre.uuid, state=OWNED_OBJECT_STATE_LIVE)
+        self.assertEqual(self.ruleset_main_user_modified.pk, changed_ruleset.pk)
+        self.private_ruleset_main_user.refresh_from_db()
+        self.assertEqual(OWNED_OBJECT_STATE_OUTDATED, self.private_ruleset_main_user.state)
+        self.changeset_ruleset_main_user.refresh_from_db()
+        self.assertIsNotNone(self.changeset_ruleset_main_user.applied)
 
-        new_ruleset_w_rule = change_models.ChangeSet(owner=self.main_customer, owner_name=self.main_customer.name, user=self.main_user, user_name=self.main_user.name)
-        new_ruleset_w_rule.save()
-        new_changeset_ruleset = change_models.Change(changeset=new_ruleset_w_rule, entity=firewall_models.RuleSet.__name__, post={'owner': str(self.main_customer.id), 'public': False, 'priority': 20}, new_uuid=uuid.uuid4())
-        new_changeset_ruleset.save()
-        new_changeset_dest_address = change_models.Change(changeset=new_ruleset_w_rule, entity=firewall_models.HostAddressObject.__name__, post={'name': 'my address object', 'owner': str(self.main_customer.id), 'public': False, 'ipv4_address': '1.2.3.4'}, new_uuid=uuid.uuid4())
-        new_changeset_dest_address.save()
-        new_changeset_rule = change_models.Change(changeset=new_ruleset_w_rule, entity=firewall_models.BasicRule.__name__, post={'ruleset': str(new_changeset_ruleset.new_uuid), 'priority': 10, 'disable': False, 'owner': str(self.main_customer.id), 'public': False, 'destination_address': str(new_changeset_dest_address.new_uuid), 'action': 'accept', 'log': False}, new_uuid=uuid.uuid4())
-        new_changeset_rule.save()
+        # Positive with dependencies
+        new_ruleset_w_rule = change_models.ChangeSet.objects.create(owner=self.main_customer, owner_name=self.main_customer.name, user=self.main_user, user_name=self.main_user.name)
+        new_ruleset = firewall_models.RuleSet.objects.create(owner=self.main_customer, public=False, priority=20, state=OWNED_OBJECT_STATE_PREPARED)
+        new_changeset_ruleset = change_models.Change.objects.create(changeset=new_ruleset_w_rule, entity=firewall_models.RuleSet.__name__, post=new_ruleset, action=change_models.ACTION_CREATED)
+        new_dest_address = firewall_models.HostAddressObject.objects.create(name='my address object', owner=self.main_customer, public=False, ipv4_address='1.2.3.4', state=OWNED_OBJECT_STATE_PREPARED)
+        new_changeset_dest_address = change_models.Change.objects.create(changeset=new_ruleset_w_rule, entity=firewall_models.HostAddressObject.__name__, post=new_dest_address, action=change_models.ACTION_CREATED)
+        new_basic_rule = firewall_models.BasicRule.objects.create(related_ruleset=new_ruleset, priority=10, disable=False, destination_address=new_dest_address, action=firewall_models.ACTION_ACCEPT, log=False, state=OWNED_OBJECT_STATE_PREPARED)
+        new_changeset_rule = change_models.Change.objects.create(changeset=new_ruleset_w_rule, entity=firewall_models.BasicRule.__name__, post=new_basic_rule, action=change_models.ACTION_CREATED)
         new_changeset_rule.dependencies.add(new_changeset_ruleset)
         new_changeset_rule.dependencies.add(new_changeset_dest_address)
-        new_changeset_dest_address_changed = change_models.Change(changeset=new_ruleset_w_rule, entity=firewall_models.HostAddressObject.__name__, pre=copy.deepcopy(new_changeset_dest_address.post), post=copy.deepcopy(new_changeset_dest_address.post))
-        new_changeset_dest_address_changed.pre['id'] = str(new_changeset_dest_address.new_uuid)
-        new_changeset_dest_address_changed.post['id'] = str(new_changeset_dest_address.new_uuid)
-        new_changeset_dest_address_changed.post['ipv4_address'] = '5.6.7.8'
-        new_changeset_dest_address_changed.save()
-        new_changeset_dest_address_changed.dependencies.add(new_changeset_dest_address)
         vycinity.meta.change_management.apply_changeset(new_ruleset_w_rule)
-        new_rule = firewall_models.Rule.objects.get(id=new_changeset_rule.new_uuid)
-        resulting_address_object = new_rule.basicrule.destination_address.hostaddressobject
-        self.assertEquals(new_changeset_dest_address_changed.post['ipv4_address'], resulting_address_object.ipv4_address)
-        self.assertEquals(new_changeset_ruleset.new_uuid, new_rule.ruleset.id)
+        new_ruleset.refresh_from_db()
+        new_dest_address.refresh_from_db()
+        new_basic_rule.refresh_from_db()
+        self.assertEqual(OWNED_OBJECT_STATE_LIVE, new_ruleset.state)
+        self.assertEqual(OWNED_OBJECT_STATE_LIVE, new_dest_address.state)
+        self.assertEqual(OWNED_OBJECT_STATE_LIVE, new_basic_rule.state)
+
+    def test_apply_changeset_conflict(self):
+        second_changeset = change_models.ChangeSet.objects.create(owner=self.main_customer, owner_name=self.main_customer.name, user=self.main_user, user_name=self.main_user.name)
+        ruleset_main_user_conflict_modified = firewall_models.RuleSet.objects.get(pk=self.private_ruleset_main_user.pk)
+        ruleset_main_user_conflict_modified.pk = None
+        ruleset_main_user_conflict_modified.id = None
+        ruleset_main_user_conflict_modified._state.adding = True
+        ruleset_main_user_conflict_modified.state = OWNED_OBJECT_STATE_PREPARED
+        ruleset_main_user_conflict_modified.comment = "Another comment"
+        ruleset_main_user_conflict_modified.save()
+        second_change = change_models.Change.objects.create(changeset=second_changeset, entity=firewall_models.RuleSet.__name__, pre=self.private_ruleset_main_user, post=ruleset_main_user_conflict_modified, action=change_models.ACTION_MODIFIED)
+        vycinity.meta.change_management.apply_changeset(self.changeset_ruleset_main_user)
+        with self.assertRaises(vycinity.meta.change_management.ChangeConflictError):
+            vycinity.meta.change_management.apply_changeset(second_changeset)
+        self.assertEqual(self.ruleset_main_user_modified.pk, firewall_models.RuleSet.objects.get(uuid=self.private_ruleset_main_user.uuid, state=OWNED_OBJECT_STATE_LIVE).pk)
+        second_changeset.refresh_from_db()
+        self.assertIsNone(second_changeset.applied)
+
+    def test_apply_changeset_double_application(self):
+        vycinity.meta.change_management.apply_changeset(self.changeset_ruleset_main_user)
+        self.changeset_ruleset_main_user.refresh_from_db()
+        application_date = self.changeset_ruleset_main_user.applied
+        with self.assertRaises(vycinity.meta.change_management.ChangeConflictError):
+            vycinity.meta.change_management.apply_changeset(self.changeset_ruleset_main_user)
+        self.changeset_ruleset_main_user.refresh_from_db()
+        self.assertEquals(application_date, self.changeset_ruleset_main_user.applied)

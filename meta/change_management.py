@@ -1,11 +1,12 @@
 import copy
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from django.db.models import Model
 from django.db.transaction import atomic
 from typing import Dict, List, Type
 from uuid import UUID
 from vycinity.meta.registries import ChangeableObjectRegistry
-from vycinity.models import change_models
+from vycinity.models import OWNED_OBJECT_STATE_DELETED, OWNED_OBJECT_STATE_LIVE, OWNED_OBJECT_STATE_OUTDATED, OWNED_OBJECT_STATE_PREPARED, change_models
 
 @dataclass
 class ChangedObjectCollection:
@@ -15,10 +16,19 @@ class ChangedObjectCollection:
     avail: dict[type[Model], list[UUID]] = field(default_factory=dict)
     deleted: dict[type[Model], list[UUID]] = field(default_factory=dict)
 
+class ChangeConflictError(Exception):
+    '''
+    An error class describing a conflict while applying a changeset.
+    '''
+    def __init__(self, message):
+        self.message = message
+
 def apply_changeset(changeset: change_models.ChangeSet):
     '''
     Applies a changeset to the current database. The changeset is applied in an atomic section, so
     either the whole changeset will be applied or it wont.
+
+    May raise a ChangeConflictError if any of the changes is not based on a live object.
     '''
     ordered_changes: List[change_models.Change] = []
     for change in changeset.changes.all():
@@ -32,28 +42,43 @@ def apply_changeset(changeset: change_models.ChangeSet):
     
     changeable_object_registry = ChangeableObjectRegistry.instance()
     with atomic():
+        if changeset.applied is not None:
+            raise ChangeConflictError('Changeset with UUID {} has been already applied.'.format(changeset.id))
         for change in ordered_changes:
+            # TODO: Check references
             type_metadata = changeable_object_registry.get(change.entity)
             if not type_metadata:
                 raise Exception('Unknown entity \'{}\''.format(change.entity))
-            if change.pre is None and change.post is not None:
-                serializer = type_metadata.serializer(data=change.post)
-                if serializer.is_valid():
-                    serializer.save(id=change.new_uuid)
-                else:
-                    raise Exception('Entity in Change %s is not more valid.' % change.id)
-            elif change.pre is not None and change.post is None and 'id' in change.pre:
-                for_deletion = type_metadata.model.objects.get(id=UUID(change.pre['id']))
-                for_deletion.delete()
-            elif change.pre is not None and change.post is not None and 'id' in change.pre:
-                serializer_data = copy.deepcopy(change.post)
-                serializer = type_metadata.serializer(type_metadata.model.objects.get(id=UUID(change.pre['id'])), data=serializer_data)
-                if serializer.is_valid():
-                    serializer.save()
-                else:
-                    raise Exception('Entity in Change {:s} is not more valid.'.format(change.id))
+            if change.action == change_models.ACTION_CREATED:
+                if change.pre is not None:
+                    raise Exception('Change {} has action "{}" and a pre set.'.format(change.id, change_models.ACTION_CREATED))
+                object = change.post
+                object.state = OWNED_OBJECT_STATE_LIVE
+                object.save()
+            elif change.action == change_models.ACTION_DELETED:
+                if change.pre is None or change.post is None:
+                    raise Exception('Change {} has action "{}", but pre or post not set.'.format(change.id, change_models.ACTION_DELETED))
+                if change.pre.state != OWNED_OBJECT_STATE_LIVE:
+                    raise ChangeConflictError('{} with UUID {} has been changed before. This change bases on an older version.'.format(change.entity, change.pre.uuid))
+                change.pre.state = OWNED_OBJECT_STATE_OUTDATED
+                change.post.state = OWNED_OBJECT_STATE_DELETED
+                change.pre.save()
+                change.post.save()
+            elif change.action == change_models.ACTION_MODIFIED:
+                if change.pre is None or change.post is None:
+                    raise Exception('Change {} has action "{}", but pre or post not set.'.format(change.id, change_models.ACTION_MODIFIED))
+                if change.pre.state != OWNED_OBJECT_STATE_LIVE:
+                    raise ChangeConflictError('{} with UUID {} has been changed before. This change bases on an older version.'.format(change.entity, change.pre.uuid))
+                if change.post.state != OWNED_OBJECT_STATE_PREPARED:
+                    raise ChangeConflictError('{} with UUID {} has been changed before. The new version is in invalid state.'.format(change.entity, change.post.uuid))
+                change.pre.state = OWNED_OBJECT_STATE_OUTDATED
+                change.post.state = OWNED_OBJECT_STATE_LIVE
+                change.pre.save()
+                change.post.save()
             else:
                 raise Exception('Change {:s} is invalid.'.format(change.id))
+        changeset.applied = datetime.now(timezone.utc)
+        changeset.save()
 
 def get_known_changed_ids(changeset: change_models.ChangeSet) -> ChangedObjectCollection:
     '''
