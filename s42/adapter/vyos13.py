@@ -14,7 +14,7 @@
 # along with VyCinity. If not, see <https://www.gnu.org/licenses/>.
 
 import copy
-from vycinity.models import basic_models, network_models, firewall_models
+from vycinity.models import OWNED_OBJECT_STATE_LIVE, basic_models, network_models, firewall_models
 from vycinity.models.firewall_models import DIRECTION_FROM, DIRECTION_INTO
 from ..routerconfig import vyos13 as configurator
 
@@ -63,15 +63,15 @@ def getDirection(src: List[Union[ipaddress.IPv4Address,ipaddress.IPv6Address,ipa
 
 def resolveAddress(address: firewall_models.AddressObject, _accumulator:List[firewall_models.AddressObject]=[]) -> List[Union[ipaddress.IPv4Address,ipaddress.IPv6Address,ipaddress.IPv4Network,ipaddress.IPv6Network]]:
     rtn = []
-    if not address in _accumulator:
+    if not address in _accumulator and address.state == OWNED_OBJECT_STATE_LIVE:
         if hasattr(address, 'networkaddressobject'):
-            network = address.networkaddressobject.network
+            network = address.networkaddressobject.related_network
             if (network.ipv4_network_address and network.ipv4_network_bits):
                 rtn.append(ipaddress.IPv4Network((network.ipv4_network_address, network.ipv4_network_bits), strict=False))
             if (network.ipv6_network_address and network.ipv6_network_bits):
                 rtn.append(ipaddress.IPv6Network((network.ipv6_network_address, network.ipv6_network_bits), strict=False))
         elif hasattr(address, 'listaddressobject'):
-            for list_object in address.listaddressobject.elements.all():
+            for list_object in address.listaddressobject.elements.filter(state=OWNED_OBJECT_STATE_LIVE):
                 resolved = resolveAddress(list_object, _accumulator + [address])
                 if resolved is None:
                     return None
@@ -93,10 +93,10 @@ def resolveAddress(address: firewall_models.AddressObject, _accumulator:List[fir
 def resolveService(service: firewall_models.ServiceObject, _accumulator:List[firewall_models.ServiceObject]=[]) -> Optional[Tuple[List[str],str]]:
     rtn_ports = []
     rtn_proto = None
-    if service in _accumulator:
+    if service in _accumulator or service.state != OWNED_OBJECT_STATE_LIVE:
         return []
     if hasattr(service, 'listserviceobject'):
-        for element in service.listserviceobject.elements.all():
+        for element in service.listserviceobject.elements.filter(state=OWNED_OBJECT_STATE_LIVE):
             (resolved_ports, resolved_proto) = resolveService(element, _accumulator + [service])
             if resolved_ports is None:
                 return None
@@ -132,7 +132,7 @@ def generateFirewallConfig(router: basic_models.Router) -> Tuple[configurator.Vy
     networks_to_firewall_into = {}
     networks_to_firewall_from = {}
     fw_cfg = configurator.Vyos13RouterConfig(['firewall'], {})
-    for firewall in firewall_models.Firewall.objects.filter(network__in=networks):
+    for firewall in firewall_models.Firewall.objects.filter(related_network__in=networks, state=OWNED_OBJECT_STATE_LIVE):
         suffix = '%s_%s' % (firewall.id, DESCR_INVALID_RE.sub('_', firewall.name))
         current_firewall_into_name = 'autogen_into_'+suffix
         current_firewall_from_name = 'autogen_from_'+suffix
@@ -164,16 +164,16 @@ def generateFirewallConfig(router: basic_models.Router) -> Tuple[configurator.Vy
 
         v4_network_address = None
         v6_network_address = None
-        if not firewall.network.ipv4_network_address is None and not firewall.network.ipv4_network_bits is None:
-            v4_network_address = ipaddress.IPv4Network((firewall.network.ipv4_network_address, firewall.network.ipv4_network_bits), strict=False)
-        if not firewall.network.ipv6_network_address is None and not firewall.network.ipv6_network_bits is None:
-            v6_network_address = ipaddress.IPv6Network((firewall.network.ipv6_network_address, firewall.network.ipv6_network_bits), strict=False)
+        if not firewall.related_network.ipv4_network_address is None and not firewall.related_network.ipv4_network_bits is None:
+            v4_network_address = ipaddress.IPv4Network((firewall.related_network.ipv4_network_address, firewall.related_network.ipv4_network_bits), strict=False)
+        if not firewall.related_network.ipv6_network_address is None and not firewall.related_network.ipv6_network_bits is None:
+            v6_network_address = ipaddress.IPv6Network((firewall.related_network.ipv6_network_address, firewall.related_network.ipv6_network_bits), strict=False)
         if v4_network_address is None and v6_network_address is None:
             logger.warning('Network of firewall %s has neither IPv4 nor IPv6 address. Ignoring firewall.', firewall.id)
             continue
 
-        for ruleset in firewall_models.RuleSet.objects.filter(firewalls__in=[firewall.id]).order_by('priority'):
-            for rule in firewall_models.Rule.objects.filter(ruleset=ruleset).order_by('priority'):
+        for ruleset in firewall_models.RuleSet.objects.filter(firewalls__in=[firewall.id], state=OWNED_OBJECT_STATE_LIVE).order_by('priority'):
+            for rule in firewall_models.Rule.objects.filter(related_ruleset=ruleset, state=OWNED_OBJECT_STATE_LIVE).order_by('priority'):
                 if rule.disable:
                     continue
                 if hasattr(rule, 'basicrule'):
@@ -230,25 +230,25 @@ def generateFirewallConfig(router: basic_models.Router) -> Tuple[configurator.Vy
                     if (rule.customrule.ip_version in [firewall_models.IP_VERSION_4, firewall_models.IP_VERSION_6] and 
                             rule.customrule.direction in [DIRECTION_INTO, DIRECTION_FROM]):
                         rule_counter[rule.customrule.direction][rule.customrule.ip_version] += 10
-                        current_fw_raw_cfg[rule.customrule.direction][rule.customrule.ip_version]['rule'][str(rule_counter[rule.customrule.direction][rule.customrule.ip_version])] = rule.customrule.rule
+                        current_fw_raw_cfg[rule.customrule.direction][rule.customrule.ip_version]['rule'][str(rule_counter[rule.customrule.direction][rule.customrule.ip_version])] = rule.customrule.rule_definition
                     else:
                         logger.warning('CustomRule %s has invalid ip version or direction. Ignoring rule.', rule.id)
                 else:
                     logger.warning('Rule %s of unknown type. Ignoring rule.', rule.id)
 
-        networks_to_firewall_into[firewall.network.id] = {}
-        networks_to_firewall_from[firewall.network.id] = {}
+        networks_to_firewall_into[firewall.related_network.id] = {}
+        networks_to_firewall_from[firewall.related_network.id] = {}
 
         if v4_network_address:
             fw_cfg = fw_cfg.merge(configurator.Vyos13RouterConfig(['firewall', 'name', current_firewall_into_name], current_fw_raw_cfg[DIRECTION_INTO][4]), False)
             fw_cfg = fw_cfg.merge(configurator.Vyos13RouterConfig(['firewall', 'name', current_firewall_from_name], current_fw_raw_cfg[DIRECTION_FROM][4]), False)
-            networks_to_firewall_into[firewall.network.id][4] = current_firewall_into_name
-            networks_to_firewall_from[firewall.network.id][4] = current_firewall_from_name
+            networks_to_firewall_into[firewall.related_network.id][4] = current_firewall_into_name
+            networks_to_firewall_from[firewall.related_network.id][4] = current_firewall_from_name
         if v6_network_address:
             fw_cfg = fw_cfg.merge(configurator.Vyos13RouterConfig(['firewall', 'ipv6-name', current_firewall_into_name], current_fw_raw_cfg[DIRECTION_INTO][6]), False)
             fw_cfg = fw_cfg.merge(configurator.Vyos13RouterConfig(['firewall', 'ipv6-name', current_firewall_from_name], current_fw_raw_cfg[DIRECTION_FROM][6]), False)
-            networks_to_firewall_into[firewall.network.id][6] = current_firewall_into_name
-            networks_to_firewall_from[firewall.network.id][6] = current_firewall_from_name
+            networks_to_firewall_into[firewall.related_network.id][6] = current_firewall_into_name
+            networks_to_firewall_from[firewall.related_network.id][6] = current_firewall_from_name
 
     return (fw_cfg, networks_to_firewall_into, networks_to_firewall_from)
 
@@ -268,7 +268,7 @@ def generateConfig(router: basic_models.Router) -> configurator.Vyos13RouterConf
         planned_config = planned_config.merge(firewall_config, False)
 
     if len(router.managed_interface_context) > 0:
-        for managed_interface in network_models.ManagedInterface.objects.filter(router=router):
+        for managed_interface in network_models.ManagedInterface.objects.filter(router=router, network__state=OWNED_OBJECT_STATE_LIVE):
             network = managed_interface.network
             addresses = []
             ipv4_net = None
