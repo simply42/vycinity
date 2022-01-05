@@ -116,7 +116,7 @@ class GenericOwnedObjectList(APIView, ABC):
             if changeset.owner != request.user.customer:
                 return Response(data={'changeset':['access to this changeset is denied']}, status=status.HTTP_403_FORBIDDEN)
             if changeset.applied is not None:
-                    return Response({'changeset': CHANGESET_APPLIED_ERROR}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({'changeset': CHANGESET_APPLIED_ERROR}, status=status.HTTP_400_BAD_REQUEST)
         change = change_models.Change(entity=self.get_model().__name__, action=change_models.ACTION_CREATED)
         
         if serializer.is_valid():

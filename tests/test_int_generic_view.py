@@ -340,6 +340,37 @@ class GenericAPITest(TestCase):
         self.assertEqual(content['public'], change_in_modified_set.post.ruleset.public)
         self.assertEqual(content['priority'], change_in_modified_set.post.ruleset.priority)
 
+        # correct case for deleted ruleset in changeset, resurrected
+        changeset_w_deleted_ruleset = change_models.ChangeSet.objects.create(owner=self.main_customer, owner_name=self.main_customer.name, user=self.main_user, user_name=self.main_user.name)
+        deleted_ruleset = firewall_models.RuleSet.objects.get(pk=self.private_ruleset_main_user.pk)
+        deleted_ruleset.id = None
+        deleted_ruleset.pk = None
+        deleted_ruleset._state.adding = True
+        deleted_ruleset.state = OWNED_OBJECT_STATE_DELETED
+        deleted_ruleset.save()
+        change_models.Change.objects.create(changeset=changeset_w_deleted_ruleset, entity=firewall_models.RuleSet.__name__, pre=self.private_ruleset_main_user, post=deleted_ruleset, action=change_models.ACTION_DELETED)
+        response = c.put('/api/v1/rulesets/%s?changeset=%s' % (self.private_ruleset_main_user.uuid, changeset_w_deleted_ruleset.id), json.dumps({'comment': 'main private ruleset resurrected', 'owner': str(self.private_ruleset_main_user.owner.id), 'priority': 27, 'public': False}), content_type='application/json', HTTP_AUTHORIZATION=self.authorization)
+        self.assertEqual(200, response.status_code)
+        content = response.json()
+        self.assertTrue(isinstance(content, dict))
+        self.assertEqual('main private ruleset resurrected', content['comment'])
+        self.assertEqual(str(self.private_ruleset_main_user.owner.id), content['owner'])
+        self.assertEqual(27, content['priority'])
+        self.assertFalse(content['public'])
+        self.assertListEqual([], content['firewalls'])
+        self.assertEqual(str(changeset_w_deleted_ruleset.id), content['changeset'])
+        modified_changeset = change_models.ChangeSet.objects.get(id=changeset_w_deleted_ruleset.id)
+        self.assertEqual(1, modified_changeset.changes.count())
+        change_in_modified_set = modified_changeset.changes.first()
+        self.assertEqual(self.private_ruleset_main_user.pk, change_in_modified_set.pre.pk)
+        self.assertEqual(deleted_ruleset.pk, change_in_modified_set.post.pk)
+        self.assertEqual(content['comment'], change_in_modified_set.post.ruleset.comment)
+        self.assertEqual(content['owner'], str(change_in_modified_set.post.ruleset.owner.id))
+        self.assertEqual(0, change_in_modified_set.post.ruleset.firewalls.count())
+        self.assertEqual(content['public'], change_in_modified_set.post.ruleset.public)
+        self.assertEqual(content['priority'], change_in_modified_set.post.ruleset.priority)
+        self.assertEqual(change_models.ACTION_MODIFIED, change_in_modified_set.action)
+
         # wrong case: sub customer must not use firewall which is not accessible
         response = c.put('/api/v1/rulesets/%s' % sub_customer_ruleset.uuid, json.dumps({'comment': 'sub customer ruleset 2', 'owner': str(sub_customer.id), 'priority': 12, 'public': False, 'firewalls':[str(self.firewall_main_user.uuid)]}), content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(403, response.status_code)
@@ -369,7 +400,7 @@ class GenericAPITest(TestCase):
     def test_delete_customer(self):
         c = Client()
 
-        # correct case
+        # correct case: simple
         own_private_ruleset_id = self.private_ruleset_main_user.uuid
         response = c.delete('/api/v1/rulesets/%s' % own_private_ruleset_id, HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(200, response.status_code)
@@ -381,6 +412,31 @@ class GenericAPITest(TestCase):
         self.assertNotEqual(self.private_ruleset_main_user.pk, changeset_containing_change.changes.first().post.pk)
         self.assertEqual(OWNED_OBJECT_STATE_DELETED, changeset_containing_change.changes.first().post.state)
         self.assertEqual(self.private_ruleset_main_user.pk, changeset_containing_change.changes.first().pre.pk)
+
+        # correct case: changed object
+        changeset_w_unlinked_ruleset = change_models.ChangeSet.objects.create(owner=self.main_customer, owner_name=self.main_customer.name, user=self.main_user, user_name=self.main_user.name)
+        unlinked_ruleset = firewall_models.RuleSet.objects.get(pk=self.private_ruleset_main_user)
+        unlinked_ruleset.id = None
+        unlinked_ruleset.pk = None
+        unlinked_ruleset._state.adding = True
+        unlinked_ruleset.state = OWNED_OBJECT_STATE_PREPARED
+        unlinked_ruleset.save()
+        unlinked_ruleset.firewalls.set([])
+        change_unlinked_ruleset = change_models.Change.objects.create(changeset=changeset_w_unlinked_ruleset, entity=firewall_models.RuleSet.__name__, pre=self.private_ruleset_main_user, post=unlinked_ruleset, action=change_models.ACTION_DELETED)
+        response = c.delete('/api/v1/rulesets/%s?changeset=%s' % (self.private_ruleset_main_user.uuid, changeset_w_unlinked_ruleset.id), HTTP_AUTHORIZATION=self.authorization)
+        self.assertEqual(200, response.status_code)
+        content = response.json()
+        self.assertEqual(changeset_w_unlinked_ruleset.id, uuid.UUID(content['changeset']))
+        changeset_containing_change = change_models.ChangeSet.objects.get(id=content['changeset'])
+        self.assertEqual(1, changeset_containing_change.changes.count())
+        self.assertEqual(firewall_models.RuleSet.__name__, changeset_containing_change.changes.first().entity)
+        self.assertEqual(unlinked_ruleset.pk, changeset_containing_change.changes.first().post.pk)
+        self.assertEqual(OWNED_OBJECT_STATE_DELETED, changeset_containing_change.changes.first().post.state)
+        self.assertEqual(self.private_ruleset_main_user.pk, changeset_containing_change.changes.first().pre.pk)
+
+        # wrong case: ruleset is still referenced
+        response = c.delete('/api/v1/rulesets/%s' % own_private_ruleset_id, HTTP_AUTHORIZATION=self.authorization)
+        self.assertEqual(400, response.status_code)
         
         # wrong case: rulesets of other customer must not be deleted
         other_customers_public_ruleset_id = self.public_ruleset_other_user.uuid
