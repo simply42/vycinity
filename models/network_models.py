@@ -16,10 +16,11 @@
 import uuid
 from django.db import models
 from django.core.exceptions import ValidationError
+from typing import List
 
 from vycinity.models import customer_models
 from vycinity.models import basic_models
-from vycinity.models import OwnedObject
+from vycinity.models import OwnedObject, AbstractOwnedObject
 
 def validate_ipv6_network_bits(value):
     if value < 0 or value > 64:
@@ -41,6 +42,13 @@ class Network(OwnedObject):
     layer2_network_id = models.IntegerField(validators=[validate_layer2_id])
     name = models.CharField(max_length=64)
     vrrp_password = models.CharField(max_length=8, null=True)
+
+    def get_related_owned_objects(self) -> List[AbstractOwnedObject]:
+        # For breaking import loop the import has to be done here
+        from vycinity.models import firewall_models
+        rtn = []
+        rtn.append(firewall_models.Firewall.objects.get(related_network=self))
+        return rtn
 
 class ManagedInterface(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

@@ -16,7 +16,7 @@
 import uuid
 from django.core.exceptions import ValidationError
 from django.db import models
-from vycinity.models import customer_models, network_models, OwnedObject, SemiOwnedObject
+from vycinity.models import AbstractOwnedObject, customer_models, network_models, OwnedObject, SemiOwnedObject
 from typing import Any, List
 
 ACTION_ACCEPT = 'accept'
@@ -59,10 +59,22 @@ class Firewall(OwnedObject):
     default_action_into = models.CharField(max_length=16, choices=ACTIONS)
     default_action_from = models.CharField(max_length=16, choices=ACTIONS)
 
+    def get_related_owned_objects(self) -> List[AbstractOwnedObject]:
+        rtn = []
+        rtn += self.rulesets.all()
+        rtn.append(self.related_network)
+        return rtn
+
 class RuleSet(OwnedObject):
     firewalls = models.ManyToManyField(Firewall)
     priority = models.IntegerField(validators=[validate_priority_ruleset])
     comment = models.TextField(null=True)
+
+    def get_related_owned_objects(self) -> List[AbstractOwnedObject]:
+        rtn = []
+        rtn += self.firewalls.all()
+        rtn += self.rules.all()
+        return rtn
 
 class Rule(SemiOwnedObject):
     related_ruleset = models.ForeignKey(RuleSet, on_delete=models.CASCADE)
@@ -82,11 +94,38 @@ class Rule(SemiOwnedObject):
     def filter_query_by_customers_or_public(query: Any, customers: List[customer_models.Customer]):
         return query.filter(models.Q(ruleset__owner__in = customers) | models.Q(ruleset__public = True))
 
+    def get_related_owned_objects(self) -> List[AbstractOwnedObject]:
+        if hasattr(self, 'basicrule'):
+            return self.basicrule.get_related_owned_objects()
+        elif hasattr(self, 'customrule'):
+            return self.customrule.get_related_owned_objects()
+        raise ValueError('Inconsistent Rule({})'.format(self.pk))
+
 class AddressObject(OwnedObject):
     name = models.CharField(max_length=64)
 
+    def get_related_owned_objects(self) -> List[AbstractOwnedObject]:
+        if hasattr(self, 'networkaddressobject'):
+            return self.networkaddressobject.get_related_owned_objects()
+        elif hasattr(self, 'cidraddressobject'):
+            return self.cidraddressobject.get_related_owned_objects()
+        elif hasattr(self, 'hostaddressobject'):
+            return self.hostaddressobject.get_related_owned_objects()
+        elif hasattr(self, 'listaddressobject'):
+            return self.listaddressobject.get_related_owned_objects()
+        raise ValueError('Inconsistent AddressObject({})'.format(self.pk))
+
 class ServiceObject(OwnedObject):
     name = models.CharField(max_length=64)
+
+    def get_related_owned_objects(self) -> List[AbstractOwnedObject]:
+        if hasattr(self, 'simpleserviceobject'):
+            return self.simpleserviceobject.get_related_owned_objects()
+        elif hasattr(self, 'listserviceobject'):
+            return self.listserviceobject.get_related_owned_objects()
+        elif hasattr(self, 'rangeserviceobject'):
+            return self.rangeserviceobject.get_related_owned_objects()
+        raise ValueError('Inconsistent ServiceObject({})'.format(self.pk))
 
 class BasicRule(Rule):
     source_address = models.ForeignKey(AddressObject, null=True, on_delete=models.RESTRICT, related_name='+')
@@ -95,13 +134,30 @@ class BasicRule(Rule):
     action = models.CharField(max_length=16, choices=ACTIONS)
     log = models.BooleanField()
 
+    def get_related_owned_objects(self) -> List[AbstractOwnedObject]:
+        rtn = []
+        rtn.append(self.related_ruleset)
+        if self.source_address is not None:
+            rtn.append(self.source_address)
+        if self.destination_address is not None:
+            rtn.append(self.destination_address)
+        if self.destination_service is not None:
+            rtn.append(self.destination_service)
+        return rtn
+
 class CustomRule(Rule):
     ip_version = models.IntegerField(choices=IP_VERSIONS)
     direction = models.CharField(max_length=4, choices=DIRECTIONS)
     rule_definition = models.JSONField()
 
+    def get_related_owned_objects(self) -> List[AbstractOwnedObject]:
+        return [self.related_ruleset]
+
 class NetworkAddressObject(AddressObject):
     related_network = models.ForeignKey(network_models.Network, on_delete=models.CASCADE)
+
+    def get_related_owned_objects(self) -> List[AbstractOwnedObject]:
+        return [self.related_network]
 
 class CIDRAddressObject(AddressObject):
     ipv6_network_address = models.GenericIPAddressField(null=True, protocol='IPv6')
@@ -109,21 +165,45 @@ class CIDRAddressObject(AddressObject):
     ipv4_network_address = models.GenericIPAddressField(null=True, protocol='IPv4')
     ipv4_network_bits = models.IntegerField(null=True, validators=[network_models.validate_ipv4_network_bits])
 
+    def get_related_owned_objects(self) -> List[AbstractOwnedObject]:
+        return []
+
 class HostAddressObject(AddressObject):
     ipv6_address = models.GenericIPAddressField(null=True, protocol='IPv6')
     ipv4_address = models.GenericIPAddressField(null=True, protocol='IPv4')
 
+    def get_related_owned_objects(self) -> List[AbstractOwnedObject]:
+        return []
+
 class ListAddressObject(AddressObject):
     elements = models.ManyToManyField(AddressObject, related_name='+')
+
+    def get_related_owned_objects(self) -> List[AbstractOwnedObject]:
+        rtn = []
+        for element in self.elements:
+            rtn += element.get_related_owned_objects()
+        return rtn
 
 class SimpleServiceObject(ServiceObject):
     protocol = models.CharField(max_length=16)
     port = models.IntegerField(validators=[validate_port_simpleserviceobject])
 
+    def get_related_owned_objects(self) -> List[AbstractOwnedObject]:
+        return []
+
 class ListServiceObject(ServiceObject):
     elements = models.ManyToManyField(ServiceObject, related_name='+')
+
+    def get_related_owned_objects(self) -> List[AbstractOwnedObject]:
+        rtn = []
+        for element in self.elements:
+            rtn += element.get_related_owned_objects()
+        return rtn
 
 class RangeServiceObject(ServiceObject):
     protocol = models.CharField(max_length=16)
     start_port = models.IntegerField(validators=[validate_port_rangeserviceobject])
     end_port = models.IntegerField(validators=[validate_port_rangeserviceobject])
+
+    def get_related_owned_objects(self) -> List[AbstractOwnedObject]:
+        return []

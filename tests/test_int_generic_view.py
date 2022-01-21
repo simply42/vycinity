@@ -44,6 +44,7 @@ class GenericAPITest(TestCase):
         cls.firewall_other_user = firewall_models.Firewall.objects.create(name='other private firewall', stateful=False, default_action_into=firewall_models.ACTION_ACCEPT, default_action_from=firewall_models.ACTION_ACCEPT, owner=cls.other_customer, public=False, state=OWNED_OBJECT_STATE_LIVE)
         cls.private_ruleset_main_user = firewall_models.RuleSet.objects.create(comment='main private ruleset', priority=10, owner=cls.main_customer, public=False, state=OWNED_OBJECT_STATE_LIVE)
         cls.private_ruleset_main_user.firewalls.set([cls.firewall_main_user])
+        cls.private_ruleset_main_user_wo_ref = firewall_models.RuleSet.objects.create(comment='main private ruleset', priority=10, owner=cls.main_customer, public=False, state=OWNED_OBJECT_STATE_LIVE)
         cls.private_ruleset_other_user = firewall_models.RuleSet.objects.create(comment='other private ruleset', priority=10, owner=cls.other_customer, public=False, state=OWNED_OBJECT_STATE_LIVE)
         cls.private_ruleset_other_user.firewalls.set([cls.firewall_other_user])
         cls.public_ruleset_other_user = firewall_models.RuleSet.objects.create(comment='other public ruleset', priority=11, owner=cls.other_customer, public=True, state=OWNED_OBJECT_STATE_LIVE)
@@ -65,9 +66,10 @@ class GenericAPITest(TestCase):
         self.assertEqual(200, response.status_code)
         content = response.json()
         self.assertTrue(isinstance(content, list))
-        self.assertEqual(2, len(content))
+        self.assertEqual(3, len(content))
         found_valid_main_user_ruleset = False
         found_valid_other_user_ruleset = False
+        found_valid_main_user_ruleset_wo_ref = False
         for content_object in content:
             if self.private_ruleset_main_user.uuid == uuid.UUID(content_object['uuid']):
                 self.assertEqual(self.private_ruleset_main_user.comment, content_object['comment'])
@@ -83,16 +85,25 @@ class GenericAPITest(TestCase):
                 self.assertEqual(str(self.other_customer.id), content_object['owner'])
                 self.assertTrue(content_object['public'])
                 found_valid_other_user_ruleset = True
+            elif self.private_ruleset_main_user_wo_ref.uuid == uuid.UUID(content_object['uuid']):
+                self.assertEqual(self.private_ruleset_main_user_wo_ref.comment, content_object['comment'])
+                self.assertListEqual([], content_object['firewalls'])
+                self.assertEqual(10, content_object['priority'])
+                self.assertEqual(str(self.main_customer.id), content_object['owner'])
+                self.assertFalse(content_object['public'])
+                found_valid_main_user_ruleset_wo_ref = True
         self.assertTrue(found_valid_main_user_ruleset)
         self.assertTrue(found_valid_other_user_ruleset)
+        self.assertTrue(found_valid_main_user_ruleset_wo_ref)
 
         response = c.get('/api/v1/rulesets?changeset=%s' % self.changeset_ruleset_main_user.id, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(200, response.status_code)
         content = response.json()
         self.assertTrue(isinstance(content, list))
-        self.assertEqual(2, len(content))
+        self.assertEqual(3, len(content))
         found_valid_main_user_ruleset = False
         found_valid_other_user_ruleset = False
+        found_valid_main_user_ruleset_wo_ref = False
         for content_object in content:
             if self.private_ruleset_main_user.uuid == uuid.UUID(content_object['uuid']):
                 self.assertEqual(self.private_ruleset_main_user_modified.comment, content_object['comment'])
@@ -108,8 +119,16 @@ class GenericAPITest(TestCase):
                 self.assertEqual(str(self.other_customer.id), content_object['owner'])
                 self.assertTrue(content_object['public'])
                 found_valid_other_user_ruleset = True
+            elif self.private_ruleset_main_user_wo_ref.uuid == uuid.UUID(content_object['uuid']):
+                self.assertEqual(self.private_ruleset_main_user_wo_ref.comment, content_object['comment'])
+                self.assertListEqual([], content_object['firewalls'])
+                self.assertEqual(10, content_object['priority'])
+                self.assertEqual(str(self.main_customer.id), content_object['owner'])
+                self.assertFalse(content_object['public'])
+                found_valid_main_user_ruleset_wo_ref = True
         self.assertTrue(found_valid_main_user_ruleset)
         self.assertTrue(found_valid_other_user_ruleset)
+        self.assertTrue(found_valid_main_user_ruleset_wo_ref)
 
     def test_list_customer_subcustomer_rulesets(self):
         sub_customer = customer_models.Customer.objects.create(name='Test Sub customer', parent_customer=self.main_customer)
@@ -125,7 +144,7 @@ class GenericAPITest(TestCase):
         self.assertEqual(200, response.status_code)
         content = response.json()
         self.assertTrue(isinstance(content, list))
-        self.assertEqual(3, len(content))
+        self.assertEqual(4, len(content))
         valid_comparisons = []
         for current_content in content:
             comparison_object: firewall_models.RuleSet = None
@@ -135,6 +154,8 @@ class GenericAPITest(TestCase):
                 comparison_object = self.public_ruleset_other_user
             elif current_content['uuid'] == str(sub_customer_ruleset.uuid):
                 comparison_object = sub_customer_ruleset
+            elif current_content['uuid'] == str(self.private_ruleset_main_user_wo_ref.uuid):
+                comparison_object = self.private_ruleset_main_user_wo_ref
             self.assertIsNotNone(comparison_object)
             self.assertNotIn(comparison_object, valid_comparisons)
             self.assertEqual(comparison_object.comment, current_content['comment'])
@@ -143,7 +164,7 @@ class GenericAPITest(TestCase):
             self.assertEqual(str(comparison_object.owner.id), current_content['owner'])
             self.assertEqual(comparison_object.public, current_content['public'])
             valid_comparisons.append(comparison_object)
-        self.assertEqual(3, len(valid_comparisons))
+        self.assertEqual(4, len(valid_comparisons))
 
         # correct list of childs rulesets
         response = c.get('/api/v1/rulesets', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=sub_auth)
@@ -401,7 +422,7 @@ class GenericAPITest(TestCase):
         c = Client()
 
         # correct case: simple
-        own_private_ruleset_id = self.private_ruleset_main_user.uuid
+        own_private_ruleset_id = self.private_ruleset_main_user_wo_ref.uuid
         response = c.delete('/api/v1/rulesets/%s' % own_private_ruleset_id, HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(200, response.status_code)
         content = response.json()
@@ -409,9 +430,9 @@ class GenericAPITest(TestCase):
         changeset_containing_change = change_models.ChangeSet.objects.get(id=content['changeset'])
         self.assertEqual(1, changeset_containing_change.changes.count())
         self.assertEqual(firewall_models.RuleSet.__name__, changeset_containing_change.changes.first().entity)
-        self.assertNotEqual(self.private_ruleset_main_user.pk, changeset_containing_change.changes.first().post.pk)
+        self.assertNotEqual(self.private_ruleset_main_user_wo_ref.pk, changeset_containing_change.changes.first().post.pk)
         self.assertEqual(OWNED_OBJECT_STATE_DELETED, changeset_containing_change.changes.first().post.state)
-        self.assertEqual(self.private_ruleset_main_user.pk, changeset_containing_change.changes.first().pre.pk)
+        self.assertEqual(self.private_ruleset_main_user_wo_ref.pk, changeset_containing_change.changes.first().pre.pk)
 
         # correct case: changed object
         changeset_w_unlinked_ruleset = change_models.ChangeSet.objects.create(owner=self.main_customer, owner_name=self.main_customer.name, user=self.main_user, user_name=self.main_user.name)
@@ -434,10 +455,6 @@ class GenericAPITest(TestCase):
         self.assertEqual(OWNED_OBJECT_STATE_DELETED, changeset_containing_change.changes.first().post.state)
         self.assertEqual(self.private_ruleset_main_user.pk, changeset_containing_change.changes.first().pre.pk)
 
-        # wrong case: ruleset is still referenced
-        response = c.delete('/api/v1/rulesets/%s' % own_private_ruleset_id, HTTP_AUTHORIZATION=self.authorization)
-        self.assertEqual(400, response.status_code)
-        
         # wrong case: rulesets of other customer must not be deleted
         other_customers_public_ruleset_id = self.public_ruleset_other_user.uuid
         response = c.delete('/api/v1/rulesets/%s' % other_customers_public_ruleset_id, HTTP_AUTHORIZATION=self.authorization)

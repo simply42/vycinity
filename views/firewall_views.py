@@ -15,7 +15,7 @@
 
 import copy
 from django.http import Http404
-from vycinity.models import OwnedObject, customer_models, firewall_models, network_models, change_models, OWNED_OBJECT_STATE_LIVE, OWNED_OBJECT_STATE_PREPARED
+from vycinity.models import AbstractOwnedObject, OwnedObject, customer_models, firewall_models, network_models, change_models, OWNED_OBJECT_STATE_LIVE, OWNED_OBJECT_STATE_PREPARED
 from vycinity.models import firewall_models as models
 from vycinity.serializers import firewall_serializers as serializers
 from vycinity.meta.change_management import ChangedObjectCollection

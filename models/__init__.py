@@ -13,7 +13,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with VyCinity. If not, see <https://www.gnu.org/licenses/>.
 
-from abc import abstractstaticmethod
+from abc import abstractmethod, abstractstaticmethod
 from django.db import models
 from django.db.models import constraints
 from rest_framework import serializers
@@ -59,6 +59,15 @@ class AbstractOwnedObject(models.Model):
                 return True
             current_customer = current_customer.parent_customer
         return False
+
+    @abstractmethod
+    def get_related_owned_objects(self) -> List['AbstractOwnedObject']:
+        '''
+        Returns a List with related AbstractOwnedObject instances directly associated.
+
+        returns: Directly associated AbstractOwnedObjects as list.
+        '''
+        raise NotImplementedError('get_related_owned_objects not yet implemented')
 
     @abstractstaticmethod
     def filter_query_by_customers_or_public(query: Any, customers: List[customer_models.Customer]):

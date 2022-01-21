@@ -202,9 +202,11 @@ class GenericOwnedObjectDetail(APIView):
                     return Response({'changeset': CHANGESET_APPLIED_ERROR}, status=status.HTTP_400_BAD_REQUEST)
                 thisname = self.get_model().__name__
                 for actual_change in changeset.changes.all():
-                    if actual_change.entity == thisname and actual_change.action in [change_models.ACTION_CREATED, change_models.ACTION_MODIFIED] and actual_change.post.uuid == uuid:
+                    if actual_change.entity == thisname and actual_change.post.uuid == uuid:
                         instance = self.get_model().objects.get(pk=actual_change.post.pk)
                         change = actual_change
+                        if change.action == change_models.ACTION_DELETED:
+                            change.action = change_models.ACTION_MODIFIED
                         break
             except change_models.ChangeSet.DoesNotExist as dne_exc:
                 raise Http404() from dne_exc
