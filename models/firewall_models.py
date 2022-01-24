@@ -65,6 +65,9 @@ class Firewall(OwnedObject):
         rtn.append(self.related_network)
         return rtn
 
+    def get_dependent_owned_objects(self) -> List['AbstractOwnedObject']:
+        return []
+
 class RuleSet(OwnedObject):
     firewalls = models.ManyToManyField(Firewall)
     priority = models.IntegerField(validators=[validate_priority_ruleset])
@@ -75,6 +78,9 @@ class RuleSet(OwnedObject):
         rtn += self.firewalls.all()
         rtn += self.rules.all()
         return rtn
+    
+    def get_dependent_owned_objects(self) -> List['AbstractOwnedObject']:
+        return []
 
 class Rule(SemiOwnedObject):
     related_ruleset = models.ForeignKey(RuleSet, on_delete=models.CASCADE, related_name='rules')
@@ -101,6 +107,9 @@ class Rule(SemiOwnedObject):
             return self.customrule.get_related_owned_objects()
         raise ValueError('Inconsistent Rule({})'.format(self.pk))
 
+    def get_dependent_owned_objects(self) -> List['AbstractOwnedObject']:
+        return self.get_related_owned_objects()
+
 class AddressObject(OwnedObject):
     name = models.CharField(max_length=64)
 
@@ -114,6 +123,9 @@ class AddressObject(OwnedObject):
         elif hasattr(self, 'listaddressobject'):
             return self.listaddressobject.get_related_owned_objects()
         raise ValueError('Inconsistent AddressObject({})'.format(self.pk))
+
+    def get_dependent_owned_objects(self) -> List['AbstractOwnedObject']:
+        return self.get_related_owned_objects()
 
 class ServiceObject(OwnedObject):
     name = models.CharField(max_length=64)

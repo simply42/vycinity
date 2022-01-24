@@ -75,6 +75,16 @@ class AbstractOwnedObject(PolymorphicModel):
         '''
         raise NotImplementedError('get_related_owned_objects not yet implemented')
 
+    @abstractmethod
+    def get_dependent_owned_objects(self) -> List['AbstractOwnedObject']:
+        '''
+        Returns a List with dependent AbstractOwnedObject instances directly associated, where
+        the instance depends on.
+
+        returns: Directly associated and dependent AbstractOwnedObjects as list.
+        '''
+        raise NotImplementedError('get_dependent_owned_objects not yet implemented')
+
     @abstractstaticmethod
     def filter_query_by_customers_or_public(query: Any, customers: List[customer_models.Customer]):
         '''

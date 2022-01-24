@@ -55,10 +55,11 @@ def apply_changeset(changeset: change_models.ChangeSet):
                 object = change.post
                 if not object.owned_by(changeset.owner):
                     raise ChangeConflictError('Object owner of {} is not accessible by user.'.format(object.uuid, reference.uuid))
+                dependencies = change.post.get_dependent_owned_objects()
                 for reference in object.get_related_owned_objects():
                     if not (reference.owned_by(changeset.owner) or reference.public == True):
                         raise ChangeConflictError('Reference of object {} to {} is not allowed.'.format(object.uuid, reference.uuid))
-                    if reference.state != OWNED_OBJECT_STATE_LIVE:
+                    if reference.state != OWNED_OBJECT_STATE_LIVE and reference in dependencies:
                         raise ChangeConflictError('Object {} points to a non live object {}.'.format(object.uuid, reference.uuid))
                 object.state = OWNED_OBJECT_STATE_LIVE
                 object.save()
@@ -69,11 +70,10 @@ def apply_changeset(changeset: change_models.ChangeSet):
                     raise ChangeConflictError('{} with UUID {} has been changed before. This change bases on an older version.'.format(change.entity, change.pre.uuid))
                 if not (change.post.owned_by(changeset.owner) and change.pre.owned_by(changeset.owner)):
                     raise ChangeConflictError('Object owner of {} is not accessible by user.'.format(object.uuid, reference.uuid))
-                for reference in change.post.get_related_owned_objects():
-                    if not (reference.owned_by(changeset.owner) or reference.public == True):
-                        raise ChangeConflictError('Reference of object {} to {} is not allowed.'.format(change.post.uuid, reference.uuid))
-                    if reference.state != OWNED_OBJECT_STATE_LIVE:
-                        raise ChangeConflictError('Object {} points to a non live object {}.'.format(change.post.uuid, reference.uuid))
+                for reference in change.pre.get_related_owned_objects():
+                    ref_dependencies = reference.get_dependent_owned_objects()
+                    if change.pre in ref_dependencies and not reference.owned_by(changeset.owner) and reference.state == OWNED_OBJECT_STATE_LIVE:
+                        raise ChangeConflictError('Object {} has a reference to object for deletion {}, but may not be modified to get unlinked.'.format(reference.uuid, change.pre.uuid))
                 change.pre.state = OWNED_OBJECT_STATE_OUTDATED
                 change.post.state = OWNED_OBJECT_STATE_DELETED
                 change.pre.save()
@@ -86,7 +86,13 @@ def apply_changeset(changeset: change_models.ChangeSet):
                 if change.post.state != OWNED_OBJECT_STATE_PREPARED:
                     raise ChangeConflictError('{} with UUID {} has been changed before. The new version is in invalid state.'.format(change.entity, change.post.uuid))
                 if not (change.post.owned_by(changeset.owner) and change.pre.owned_by(changeset.owner)):
-                    raise ChangeConflictError('Object owner of {} is not accessible by user.'.format(object.uuid, reference.uuid))
+                    raise ChangeConflictError('Object owner of {} is not accessible by user.'.format(change.pre.uuid))
+                dependencies = change.post.get_dependent_owned_objects()
+                for reference in change.post.get_related_owned_objects():
+                    if not (reference.owned_by(changeset.owner) or reference.public == True):
+                        raise ChangeConflictError('Reference of object {} to {} is not allowed.'.format(change.post.uuid, reference.uuid))
+                    if reference.state != OWNED_OBJECT_STATE_LIVE and reference in dependencies:
+                        raise ChangeConflictError('Object {} points to a non live object {}.'.format(change.post.uuid, reference.uuid))
                 change.pre.state = OWNED_OBJECT_STATE_OUTDATED
                 change.post.state = OWNED_OBJECT_STATE_LIVE
                 change.pre.save()

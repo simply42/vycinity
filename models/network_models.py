@@ -48,6 +48,10 @@ class Network(OwnedObject):
         rtn = []
         rtn.append(firewall_models.Firewall.objects.get(related_network=self))
         return rtn
+    
+    def get_dependent_owned_objects(self) -> List['AbstractOwnedObject']:
+        return []
+
 
 class ManagedInterface(PolymorphicModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
