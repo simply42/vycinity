@@ -15,6 +15,7 @@
 
 import uuid
 from django.db import models
+from polymorphic.models import PolymorphicModel
 from vycinity.models import customer_models
 
 ACTION_CREATED = 'created'
@@ -26,7 +27,7 @@ CHANGE_ACTIONS = [
     (ACTION_DELETED, ACTION_DELETED)
 ]
 
-class ChangeSet(models.Model):
+class ChangeSet(PolymorphicModel):
     '''
     ChangeSet describes a list of changes to different entities.
     '''
@@ -39,7 +40,7 @@ class ChangeSet(models.Model):
     modified = models.DateTimeField(editable=False, auto_now=True)
     applied = models.DateTimeField(null=True)
 
-class Change(models.Model):
+class Change(PolymorphicModel):
     '''
     A Change describes a changed entity by linking to a previous version with a newer one. The
     deletion-change is a bit special, as the pre and post may be the same entities.

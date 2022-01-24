@@ -77,18 +77,18 @@ class RuleSet(OwnedObject):
         return rtn
 
 class Rule(SemiOwnedObject):
-    related_ruleset = models.ForeignKey(RuleSet, on_delete=models.CASCADE)
+    related_ruleset = models.ForeignKey(RuleSet, on_delete=models.CASCADE, related_name='rules')
     priority = models.IntegerField(validators=[validate_priority_rule])
     comment = models.TextField(null=True)
     disable = models.BooleanField()
 
     @property
     def owner(self):
-        return self.ruleset.owner
+        return self.related_ruleset.owner
 
     @property
     def public(self):
-        return self.ruleset.public
+        return self.related_ruleset.public
 
     @staticmethod
     def filter_query_by_customers_or_public(query: Any, customers: List[customer_models.Customer]):

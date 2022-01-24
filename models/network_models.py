@@ -16,9 +16,8 @@
 import uuid
 from django.db import models
 from django.core.exceptions import ValidationError
+from polymorphic.models import PolymorphicModel
 from typing import List
-
-from vycinity.models import customer_models
 from vycinity.models import basic_models
 from vycinity.models import OwnedObject, AbstractOwnedObject
 
@@ -50,7 +49,7 @@ class Network(OwnedObject):
         rtn.append(firewall_models.Firewall.objects.get(related_network=self))
         return rtn
 
-class ManagedInterface(models.Model):
+class ManagedInterface(PolymorphicModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     router = models.ForeignKey(to=basic_models.Router, on_delete=models.CASCADE)
     ipv4_address = models.GenericIPAddressField(null=True, protocol='IPv4')

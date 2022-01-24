@@ -6,7 +6,17 @@ Backend for configuring VyOS' routers using a central, semantic REST interface. 
 
 This is a [Django App](https://www.djangoproject.com/). You need to add this to a Django-project to make use of this software. Currently this App is in a so early stage, there are no packages. This is planned when the whole app is more mature. You can try it out but the produced API is still not stable until annouced here. 
 
-For a list of unmodified dependencies visit [requirements.txt](requirements.txt). Install them using `python3 -m pip install` or similar. 
+For a list of unmodified dependencies visit [requirements.txt](requirements.txt). Install them using `python3 -m pip install` or similar. After that, add the app and its dependencies into the list of your installed apps in the settings of the django settings:
+
+```
+INSTALLED_APPS = [
+    # other apps here...
+    'rest_framework',
+    'polymorphic',
+    'django.contrib.contenttypes',  # often already included
+    'vycinity'
+]
+```
 
 ## Licensing and Copyright
 

@@ -15,6 +15,7 @@
 
 from abc import abstractmethod, abstractstaticmethod
 from django.db import models
+from polymorphic.models import PolymorphicModel
 from django.db.models import constraints
 from rest_framework import serializers
 from vycinity.models import customer_models, change_models
@@ -32,7 +33,7 @@ OWNED_OBJECT_STATES = [
     (OWNED_OBJECT_STATE_DELETED, OWNED_OBJECT_STATE_DELETED)
 ]
 
-class AbstractOwnedObject(models.Model):
+class AbstractOwnedObject(PolymorphicModel):
     '''
     Abstract base model.
     '''
@@ -44,7 +45,6 @@ class AbstractOwnedObject(models.Model):
         constraints = [
             constraints.UniqueConstraint(fields=['uuid', 'state'], name='%(app_label)s_max_one_%(class)s_live', condition=models.Q(state=OWNED_OBJECT_STATE_LIVE))
         ]
-        abstract = True
 
     def owned_by(self, customer: customer_models.Customer):
         '''

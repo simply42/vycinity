@@ -15,10 +15,11 @@
 
 import uuid
 from django.db import models
+from polymorphic.models import PolymorphicModel
 
 NAME_LENGTH = 64
 
-class Customer(models.Model):
+class Customer(PolymorphicModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=NAME_LENGTH, unique=True)
     parent_customer = models.ForeignKey(to='Customer', null=True, on_delete=models.CASCADE)
@@ -29,7 +30,7 @@ class Customer(models.Model):
             rtn += child.get_visible_customers()
         return rtn
 
-class User(models.Model):
+class User(PolymorphicModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=NAME_LENGTH, unique=True)
     display_name = models.CharField(max_length=64, null=True)
@@ -47,7 +48,7 @@ class User(models.Model):
     def is_staff(self):
         return False
 
-class LocalUserAuth(models.Model):
+class LocalUserAuth(PolymorphicModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(to=User, on_delete=models.CASCADE)
     auth = models.CharField(max_length=256)

@@ -15,7 +15,7 @@
 
 import copy
 from vycinity.models import OWNED_OBJECT_STATE_LIVE, basic_models, network_models, firewall_models
-from vycinity.models.firewall_models import DIRECTION_FROM, DIRECTION_INTO
+from vycinity.models.firewall_models import DIRECTION_FROM, DIRECTION_INTO, BasicRule, CIDRAddressObject, CustomRule, HostAddressObject, ListAddressObject, ListServiceObject, NetworkAddressObject, RangeServiceObject, SimpleServiceObject
 from ..routerconfig import vyos13 as configurator
 
 import ipaddress
@@ -64,28 +64,28 @@ def getDirection(src: List[Union[ipaddress.IPv4Address,ipaddress.IPv6Address,ipa
 def resolveAddress(address: firewall_models.AddressObject, _accumulator:List[firewall_models.AddressObject]=[]) -> List[Union[ipaddress.IPv4Address,ipaddress.IPv6Address,ipaddress.IPv4Network,ipaddress.IPv6Network]]:
     rtn = []
     if not address in _accumulator and address.state == OWNED_OBJECT_STATE_LIVE:
-        if hasattr(address, 'networkaddressobject'):
-            network = address.networkaddressobject.related_network
+        if isinstance(address, NetworkAddressObject):
+            network = address.related_network
             if (network.ipv4_network_address and network.ipv4_network_bits):
                 rtn.append(ipaddress.IPv4Network((network.ipv4_network_address, network.ipv4_network_bits), strict=False))
             if (network.ipv6_network_address and network.ipv6_network_bits):
                 rtn.append(ipaddress.IPv6Network((network.ipv6_network_address, network.ipv6_network_bits), strict=False))
-        elif hasattr(address, 'listaddressobject'):
-            for list_object in address.listaddressobject.elements.filter(state=OWNED_OBJECT_STATE_LIVE):
+        elif isinstance(address, ListAddressObject):
+            for list_object in address.elements.filter(state=OWNED_OBJECT_STATE_LIVE):
                 resolved = resolveAddress(list_object, _accumulator + [address])
                 if resolved is None:
                     return None
                 rtn += resolved
-        elif hasattr(address, 'hostaddressobject'):
-            if not address.hostaddressobject.ipv4_address is None:
-                rtn.append(ipaddress.IPv4Address(address.hostaddressobject.ipv4_address))
-            if not address.hostaddressobject.ipv6_address is None:
-                rtn.append(ipaddress.IPv6Address(address.hostaddressobject.ipv6_address))
-        elif hasattr(address, 'cidraddressobject'):
-            if not address.cidraddressobject.ipv4_network_address is None and not address.cidraddressobject.ipv4_network_bits is None:
-                rtn.append(ipaddress.IPv4Network((address.cidraddressobject.ipv4_network_address, address.cidraddressobject.ipv4_network_bits), strict=False))
-            if not address.cidraddressobject.ipv6_network_address is None and not address.cidraddressobject.ipv6_network_bits is None:
-                rtn.append(ipaddress.IPv6Network((address.cidraddressobject.ipv6_network_address, address.cidraddressobject.ipv6_network_bits), strict=False))
+        elif isinstance(address, HostAddressObject):
+            if not address.ipv4_address is None:
+                rtn.append(ipaddress.IPv4Address(address.ipv4_address))
+            if not address.ipv6_address is None:
+                rtn.append(ipaddress.IPv6Address(address.ipv6_address))
+        elif isinstance(address, CIDRAddressObject):
+            if not address.ipv4_network_address is None and not address.ipv4_network_bits is None:
+                rtn.append(ipaddress.IPv4Network((address.ipv4_network_address, address.ipv4_network_bits), strict=False))
+            if not address.ipv6_network_address is None and not address.ipv6_network_bits is None:
+                rtn.append(ipaddress.IPv6Network((address.ipv6_network_address, address.ipv6_network_bits), strict=False))
         else:
             return None
     return rtn
@@ -95,8 +95,8 @@ def resolveService(service: firewall_models.ServiceObject, _accumulator:List[fir
     rtn_proto = None
     if service in _accumulator or service.state != OWNED_OBJECT_STATE_LIVE:
         return []
-    if hasattr(service, 'listserviceobject'):
-        for element in service.listserviceobject.elements.filter(state=OWNED_OBJECT_STATE_LIVE):
+    if isinstance(service, ListServiceObject):
+        for element in service.elements.filter(state=OWNED_OBJECT_STATE_LIVE):
             (resolved_ports, resolved_proto) = resolveService(element, _accumulator + [service])
             if resolved_ports is None:
                 return None
@@ -104,13 +104,13 @@ def resolveService(service: firewall_models.ServiceObject, _accumulator:List[fir
                 return None
             rtn_ports += resolved_ports
             rtn_proto = resolved_proto
-    elif hasattr(service, 'simpleserviceobject'):
-        rtn_ports = [service.simpleserviceobject.port]
-        rtn_proto = service.simpleserviceobject.protocol
-    elif hasattr(service, 'rangeserviceobject'):
-        if service.rangeserviceobject.start_port >= service.rangeserviceobject.end_port:
-            rtn_ports = ['%d-%d' % (service.rangeserviceobject.start_port, service.rangeserviceobject.end_port)]
-            rtn_proto = service.rangeserviceobject.protocol
+    elif isinstance(service, SimpleServiceObject):
+        rtn_ports = [service.port]
+        rtn_proto = service.protocol
+    elif isinstance(service, RangeServiceObject):
+        if service.start_port >= service.end_port:
+            rtn_ports = ['%d-%d' % (service.start_port, service.end_port)]
+            rtn_proto = service.protocol
     if rtn_proto is None:
         return None
     return (rtn_ports, rtn_proto)
@@ -176,13 +176,13 @@ def generateFirewallConfig(router: basic_models.Router) -> Tuple[configurator.Vy
             for rule in firewall_models.Rule.objects.filter(related_ruleset=ruleset, state=OWNED_OBJECT_STATE_LIVE).order_by('priority'):
                 if rule.disable:
                     continue
-                if hasattr(rule, 'basicrule'):
+                if isinstance(rule, BasicRule):
                     source_addresses = []
-                    if rule.basicrule.source_address:
-                        source_addresses = resolveAddress(rule.basicrule.source_address)
+                    if rule.source_address:
+                        source_addresses = resolveAddress(rule.source_address)
                     destination_addresses = []
-                    if rule.basicrule.destination_address:
-                        destination_addresses = resolveAddress(rule.basicrule.destination_address)
+                    if rule.destination_address:
+                        destination_addresses = resolveAddress(rule.destination_address)
                     if source_addresses is None or destination_addresses is None:
                         logger.warning('Source or destination address of basic rule %s could not be resolved. Ignoring rule.', rule.id)
                         continue
@@ -193,10 +193,10 @@ def generateFirewallConfig(router: basic_models.Router) -> Tuple[configurator.Vy
                     
                     (v4_sources, v6_sources) = classifyVersionedAddressesAsString(source_addresses)
                     (v4_destinations, v6_destinations) = classifyVersionedAddressesAsString(destination_addresses)
-                    if rule.basicrule.destination_service:
-                        resolvedService = resolveService(rule.basicrule.destination_service)
+                    if rule.destination_service:
+                        resolvedService = resolveService(rule.destination_service)
                         if resolvedService is None:
-                            logger.warning('Service %s in basic rule %s could not be resolved. Ignoring rule.', rule.basicrule.destination_service.id, rule.id)
+                            logger.warning('Service %s in basic rule %s could not be resolved. Ignoring rule.', rule.destination_service.id, rule.id)
                             continue
                         (ports, proto) = resolvedService
                     else:
@@ -206,7 +206,7 @@ def generateFirewallConfig(router: basic_models.Router) -> Tuple[configurator.Vy
                         gen_raw_rules = []
                         for src in v4_sources:
                             for dst in v4_destinations:
-                                raw_rule = {'source':{'address':src}, 'destination':{'address':dst}, 'action':rule.basicrule.action}
+                                raw_rule = {'source':{'address':src}, 'destination':{'address':dst}, 'action':rule.action}
                                 if not proto is None:
                                     raw_rule['destination']['port'] = ','.join(ports)
                                     raw_rule['protocol'] = proto
@@ -218,7 +218,7 @@ def generateFirewallConfig(router: basic_models.Router) -> Tuple[configurator.Vy
                         gen_raw_rules = []
                         for src in v6_sources:
                             for dst in v6_destinations:
-                                raw_rule = {'source':{'address':src}, 'destination':{'address':dst}, 'action':rule.basicrule.action}
+                                raw_rule = {'source':{'address':src}, 'destination':{'address':dst}, 'action':rule.action}
                                 if not proto is None:
                                     raw_rule['destination']['port'] = ','.join(ports)
                                     raw_rule['protocol'] = proto
@@ -226,11 +226,11 @@ def generateFirewallConfig(router: basic_models.Router) -> Tuple[configurator.Vy
                         for raw_rule in gen_raw_rules:
                             rule_counter[v6_direction][6] += 10
                             current_fw_raw_cfg[v6_direction][6]['rule'][str(rule_counter[v6_direction][6])] = raw_rule
-                elif hasattr(rule, 'customrule'):
-                    if (rule.customrule.ip_version in [firewall_models.IP_VERSION_4, firewall_models.IP_VERSION_6] and 
-                            rule.customrule.direction in [DIRECTION_INTO, DIRECTION_FROM]):
-                        rule_counter[rule.customrule.direction][rule.customrule.ip_version] += 10
-                        current_fw_raw_cfg[rule.customrule.direction][rule.customrule.ip_version]['rule'][str(rule_counter[rule.customrule.direction][rule.customrule.ip_version])] = rule.customrule.rule_definition
+                elif isinstance(rule, CustomRule):
+                    if (rule.ip_version in [firewall_models.IP_VERSION_4, firewall_models.IP_VERSION_6] and 
+                            rule.direction in [DIRECTION_INTO, DIRECTION_FROM]):
+                        rule_counter[rule.direction][rule.ip_version] += 10
+                        current_fw_raw_cfg[rule.direction][rule.ip_version]['rule'][str(rule_counter[rule.direction][rule.ip_version])] = rule.rule_definition
                     else:
                         logger.warning('CustomRule %s has invalid ip version or direction. Ignoring rule.', rule.id)
                 else:

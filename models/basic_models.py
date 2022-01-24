@@ -15,8 +15,9 @@
 
 import uuid
 from django.db import models
+from polymorphic.models import PolymorphicModel
 
-class StaticConfigSection(models.Model):
+class StaticConfigSection(PolymorphicModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     context = models.JSONField()
     description = models.TextField(null=True)
@@ -25,7 +26,7 @@ class StaticConfigSection(models.Model):
 class Vyos13StaticConfigSection(StaticConfigSection):
     content = models.JSONField()
 
-class Router(models.Model):
+class Router(PolymorphicModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=64, unique=True, blank=False)
     loopback = models.GenericIPAddressField(unique=True, unpack_ipv4=True, blank=False)
@@ -37,7 +38,7 @@ class Vyos13Router(Router):
     fingerprint = models.CharField(max_length=256, blank=False)
     active_static_configs = models.ManyToManyField(Vyos13StaticConfigSection, blank=True)
 
-class RouterConfig(models.Model):
+class RouterConfig(PolymorphicModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     created = models.DateTimeField(auto_now_add=True)
     router = models.ForeignKey(Router, on_delete=models.CASCADE, null=False)
@@ -58,7 +59,7 @@ DEPLOYMENT_STATES = [
     (DEPLOYMENT_STATE_SUCCEED, 'succeed')
 ]
 
-class Deployment(models.Model):
+class Deployment(PolymorphicModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     triggered = models.DateTimeField(auto_now_add=True)
     last_update = models.DateTimeField(auto_now=True)
