@@ -1,9 +1,23 @@
-import copy
+# This file is part of VyCinity.
+#
+# VyCinity is free software: you can redistribute it and/or modify it under the
+# terms of the GNU Affero General Public License as published by the Free
+# Software Foundation, either version 3 of the License, or (at your option) any
+# later version.
+#
+# VyCinity is distributed in the hope that it will be useful, but WITHOUT ANY
+# WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with VyCinity. If not, see <https://www.gnu.org/licenses/>.
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from django.db.models import Model
 from django.db.transaction import atomic
-from typing import Dict, List, Type
+from typing import List
 from uuid import UUID
 from vycinity.meta.registries import ChangeableObjectRegistry
 from vycinity.models import OWNED_OBJECT_STATE_DELETED, OWNED_OBJECT_STATE_LIVE, OWNED_OBJECT_STATE_OUTDATED, OWNED_OBJECT_STATE_PREPARED, change_models
@@ -45,7 +59,6 @@ def apply_changeset(changeset: change_models.ChangeSet):
         if changeset.applied is not None:
             raise ChangeConflictError('Changeset with UUID {} has been already applied.'.format(changeset.id))
         for change in ordered_changes:
-            # TODO: Check references
             type_metadata = changeable_object_registry.get(change.entity)
             if not type_metadata:
                 raise Exception('Unknown entity \'{}\''.format(change.entity))
