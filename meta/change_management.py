@@ -53,6 +53,13 @@ def apply_changeset(changeset: change_models.ChangeSet):
                 if change.pre is not None:
                     raise Exception('Change {} has action "{}" and a pre set.'.format(change.id, change_models.ACTION_CREATED))
                 object = change.post
+                if not object.owned_by(changeset.owner):
+                    raise ChangeConflictError('Object owner of {} is not accessible by user.'.format(object.uuid, reference.uuid))
+                for reference in object.get_related_owned_objects():
+                    if not (reference.owned_by(changeset.owner) or reference.public == True):
+                        raise ChangeConflictError('Reference of object {} to {} is not allowed.'.format(object.uuid, reference.uuid))
+                    if reference.state != OWNED_OBJECT_STATE_LIVE:
+                        raise ChangeConflictError('Object {} points to a non live object {}.'.format(object.uuid, reference.uuid))
                 object.state = OWNED_OBJECT_STATE_LIVE
                 object.save()
             elif change.action == change_models.ACTION_DELETED:
@@ -60,6 +67,13 @@ def apply_changeset(changeset: change_models.ChangeSet):
                     raise Exception('Change {} has action "{}", but pre or post not set.'.format(change.id, change_models.ACTION_DELETED))
                 if change.pre.state != OWNED_OBJECT_STATE_LIVE:
                     raise ChangeConflictError('{} with UUID {} has been changed before. This change bases on an older version.'.format(change.entity, change.pre.uuid))
+                if not (change.post.owned_by(changeset.owner) and change.pre.owned_by(changeset.owner)):
+                    raise ChangeConflictError('Object owner of {} is not accessible by user.'.format(object.uuid, reference.uuid))
+                for reference in change.post.get_related_owned_objects():
+                    if not (reference.owned_by(changeset.owner) or reference.public == True):
+                        raise ChangeConflictError('Reference of object {} to {} is not allowed.'.format(change.post.uuid, reference.uuid))
+                    if reference.state != OWNED_OBJECT_STATE_LIVE:
+                        raise ChangeConflictError('Object {} points to a non live object {}.'.format(change.post.uuid, reference.uuid))
                 change.pre.state = OWNED_OBJECT_STATE_OUTDATED
                 change.post.state = OWNED_OBJECT_STATE_DELETED
                 change.pre.save()
@@ -71,6 +85,8 @@ def apply_changeset(changeset: change_models.ChangeSet):
                     raise ChangeConflictError('{} with UUID {} has been changed before. This change bases on an older version.'.format(change.entity, change.pre.uuid))
                 if change.post.state != OWNED_OBJECT_STATE_PREPARED:
                     raise ChangeConflictError('{} with UUID {} has been changed before. The new version is in invalid state.'.format(change.entity, change.post.uuid))
+                if not (change.post.owned_by(changeset.owner) and change.pre.owned_by(changeset.owner)):
+                    raise ChangeConflictError('Object owner of {} is not accessible by user.'.format(object.uuid, reference.uuid))
                 change.pre.state = OWNED_OBJECT_STATE_OUTDATED
                 change.post.state = OWNED_OBJECT_STATE_LIVE
                 change.pre.save()

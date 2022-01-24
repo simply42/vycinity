@@ -44,6 +44,7 @@ class AbstractOwnedObject(models.Model):
         constraints = [
             constraints.UniqueConstraint(fields=['uuid', 'state'], name='%(app_label)s_max_one_%(class)s_live', condition=models.Q(state=OWNED_OBJECT_STATE_LIVE))
         ]
+        abstract = True
 
     def owned_by(self, customer: customer_models.Customer):
         '''
@@ -59,6 +60,11 @@ class AbstractOwnedObject(models.Model):
                 return True
             current_customer = current_customer.parent_customer
         return False
+
+    @property
+    @abstractmethod
+    def owner(self):
+        raise NotImplementedError('Owner is not defined')
 
     @abstractmethod
     def get_related_owned_objects(self) -> List['AbstractOwnedObject']:
@@ -129,10 +135,6 @@ class SemiOwnedObject(AbstractOwnedObject):
     class Meta:
         abstract = True
     
-    @property
-    def owner(self):
-        raise NotImplementedError('Owner is not defined')
-
     @property
     def public(self):
         raise NotImplementedError('Public is not defined')
