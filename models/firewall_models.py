@@ -61,8 +61,10 @@ class Firewall(OwnedObject):
 
     def get_related_owned_objects(self) -> List[AbstractOwnedObject]:
         rtn = []
-        rtn += self.rulesets.all()
-        rtn.append(self.related_network)
+        for ruleset in RuleSet.objects.filter(firewalls=self):
+            rtn.append(ruleset)
+        if self.related_network is not None:
+            rtn.append(self.related_network)
         return rtn
 
     def get_dependent_owned_objects(self) -> List['AbstractOwnedObject']:

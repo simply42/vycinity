@@ -18,6 +18,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from vycinity.models import change_models
 from vycinity.serializers import change_serializers
+from vycinity.meta import change_management
 
 class ChangeSetList(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -44,6 +45,20 @@ class ChangeSetDetailView(APIView):
         except change_models.ChangeSet.DoesNotExist:
             return Response({'general': 'Not Found.'}, status=status.HTTP_404_NOT_FOUND)
 
+    def put(self, request, id, format=None):
+        try:
+            changeset = change_models.ChangeSet.objects.get(pk=id)
+            if not changeset.owner in request.user.customer.get_visible_customers():
+                return Response({'general': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
+            try:
+                change_management.apply_changeset(changeset)
+                changeset.refresh_from_db()
+                return Response(change_serializers.ChangeSetSerializer(changeset).data)
+            except change_management.ChangeConflictError as cce:
+                return Response({'failure': cce.message}, status=status.HTTP_400_BAD_REQUEST)
+        except change_models.ChangeSet.DoesNotExist:
+            return Response({'general': 'Not Found.'}, status=status.HTTP_404_NOT_FOUND)
+
     def delete(self, request, id, format=None):
         try:
             changeset = change_models.ChangeSet.objects.get(pk=id)
@@ -52,7 +67,7 @@ class ChangeSetDetailView(APIView):
             if changeset.applied:
                 return Response({'general': 'Change set was already applied. Deletion is not possible.'}, status=status.HTTP_403_FORBIDDEN)
             changeset.delete()
-            return Response(status.HTTP_204_NO_CONTENT)
+            return Response(status=status.HTTP_204_NO_CONTENT)
         except change_models.ChangeSet.DoesNotExist:
             raise Response({'general': 'Not Found.'}, status=status.HTTP_404_NOT_FOUND)
 

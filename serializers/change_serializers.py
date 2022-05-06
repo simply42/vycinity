@@ -21,8 +21,8 @@ class ChangeSetSerializer(ModelSerializer):
     changes = PrimaryKeyRelatedField(many=True, read_only=True)
     class Meta:
         model = change_models.ChangeSet
-        fields = ['id', 'owner', 'user', 'created', 'modified', 'applied', 'changes']
-        read_only_fields = ['id', 'owner', 'user', 'created', 'modified', 'applied']
+        fields = ['id', 'owner', 'owner_name', 'user', 'user_name', 'created', 'modified', 'applied', 'changes']
+        read_only_fields = ['id', 'owner', 'owner_name', 'user', 'user_name', 'created', 'modified', 'applied']
 
 class ChangeSerializer(ModelSerializer):
     class Meta:

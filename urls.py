@@ -32,8 +32,9 @@ urlpatterns = [
     path('customers/<uuid:id>', customer_views.CustomerDetailView.as_view()),
     path('changesets', change_views.ChangeSetList.as_view()),
     path('changesets/<uuid:id>', change_views.ChangeSetDetailView.as_view()),
-    path('changes', change_views.ChangeList.as_view()),
-    path('changes/<uuid:id>', change_views.ChangeDetailView.as_view()),
+    # Not ready to use yet
+    #path('changes', change_views.ChangeList.as_view()),
+    #path('changes/<uuid:id>', change_views.ChangeDetailView.as_view()),
     path('schema', get_schema_view(permission_classes=[IsAuthenticated])),
     path('dev-auth/', include('rest_framework.urls'))
 ]
