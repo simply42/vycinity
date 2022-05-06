@@ -19,8 +19,8 @@ from vycinity.models.network_models import Network, ManagedInterface, ManagedVRR
 class NetworkSerializer(serializers.ModelSerializer):
     class Meta:
         model = Network
-        fields = ['id', 'owner', 'ipv4_network_address', 'ipv4_network_bits', 'ipv6_network_address', 'ipv6_network_bits', 'layer2_network_id', 'name', 'vrrp_password']
-        read_only_fields = ['id']
+        fields = ['uuid', 'owner', 'ipv4_network_address', 'ipv4_network_bits', 'ipv6_network_address', 'ipv6_network_bits', 'layer2_network_id', 'name', 'vrrp_password', 'public']
+        read_only_fields = ['uuid']
 
 class ManagedInterfaceSerializer(serializers.ModelSerializer):
     class Meta:
