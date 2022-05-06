@@ -13,12 +13,14 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with VyCinity. If not, see <https://www.gnu.org/licenses/>.
 
-from typing import List, Type, Optional
+from typing import Callable, List, Type, Optional
 from collections import namedtuple
 from django.db.models import Model
 from django.urls import URLPattern, path
 from rest_framework.views import APIView
 from rest_framework.serializers import Serializer
+
+from vycinity.models.change_models import ACTION_CREATED, ACTION_DELETED, ACTION_MODIFIED, Change
 
 
 ChangeableObjectEntry = namedtuple('ChangeableObjectEntry', ['model', 'serializer', 'path', 'single_view', 'list_view'])
@@ -37,6 +39,7 @@ class ChangeableObjectRegistry(object):
         if ChangeableObjectRegistry.__instance is None:
             ChangeableObjectRegistry.__instance = object.__new__(cls)
             ChangeableObjectRegistry.__instance.registry = {}
+            ChangeableObjectRegistry.__instance.update_hook_registy = {}
 
             # initialize at runtime to break import loop
             from vycinity.models import firewall_models, network_models
@@ -56,6 +59,8 @@ class ChangeableObjectRegistry(object):
             ChangeableObjectRegistry.__instance.register(network_models.Network, network_serializers.NetworkSerializer, 'networks', network_views.NetworkDetailView, network_views.NetworkList)
             ChangeableObjectRegistry.__instance.register(network_models.ManagedInterface, network_serializers.ManagedInterfaceSerializer, 'managedinterfaces', network_views.ManagedInterfaceDetailView, network_views.ManagedInterfaceList)
             ChangeableObjectRegistry.__instance.register(network_models.ManagedVRRPInterface, network_serializers.ManagedVRRPInterfaceSerializer, 'managedinterfaces/vrrp', network_views.ManagedVRRPInterfaceDetailView, network_views.ManagedVRRPInterfaceList)
+
+            ChangeableObjectRegistry.__instance.register_for_version_change(network_models.Network, network_models.ManagedInterface.update_networks)
         return ChangeableObjectRegistry.__instance
 
     @staticmethod
@@ -73,12 +78,49 @@ class ChangeableObjectRegistry(object):
             return
         ChangeableObjectRegistry.__instance.registry[name] = ChangeableObjectEntry(model, serializer, path, single_view, list_view)
 
+    def register_for_version_change(self, model: Type[Model], hook: Callable[[Optional[Model],Optional[Model]],None]) -> None:
+        '''
+        Registers a hook for getting notified when a generic object gets changed.
+
+        As generic objects versions work by duplicating them on change, references should be
+        updated to ensure there are no broken references. This should be done in the registered
+        hook.
+
+        Params:
+            model: The type the hook should be triggered for.
+            hook: A callable with following parameters:
+                    - pre: The old object. Set to None if the Object is created.
+                    - post: The new object. Set to None if the Object is deleted.
+                  The result of the callable is ignored.
+        '''
+        name = model.__name__
+        if name not in ChangeableObjectRegistry.__instance.registry:
+            return
+        if name not in ChangeableObjectRegistry.__instance.update_hook_registy:
+            ChangeableObjectRegistry.__instance.update_hook_registy[name] = []
+        ChangeableObjectRegistry.__instance.update_hook_registy[name].append(hook)
+
     def get(self, name: str) -> Optional[ChangeableObjectEntry]:
         '''
         Retrieve a registered type and it's meta information.
         '''
         if name in ChangeableObjectRegistry.__instance.registry:
             return ChangeableObjectRegistry.__instance.registry[name]
+
+    def notify_about_change(self, change: Change) -> None:
+        '''
+        Notify registered hooks about a change.
+        '''
+        name = type(change.post).__name__
+        if name in ChangeableObjectRegistry.__instance.update_hook_registy:
+            for hook in ChangeableObjectRegistry.__instance.update_hook_registy[name]:
+                if change.action == ACTION_CREATED:
+                    hook(None, change.post)
+                elif change.action == ACTION_MODIFIED:
+                    hook(change.pre, change.post)
+                elif change.action == ACTION_DELETED:
+                    hook(change.pre, None)
+
 
     def all(self) -> List[ChangeableObjectEntry]:
         '''

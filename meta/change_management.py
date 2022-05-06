@@ -112,6 +112,7 @@ def apply_changeset(changeset: change_models.ChangeSet):
                 change.post.save()
             else:
                 raise Exception('Change {:s} is invalid.'.format(change.id))
+            changeable_object_registry.notify_about_change(change)
         changeset.applied = datetime.now(timezone.utc)
         changeset.save()
 

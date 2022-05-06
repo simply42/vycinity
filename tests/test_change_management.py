@@ -13,16 +13,11 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with VyCinity. If not, see <https://www.gnu.org/licenses/>.
 
-import copy
-import uuid
-from django.test import Client, TestCase
+from django.test import TestCase
 import vycinity.views
-from vycinity.models import OWNED_OBJECT_STATE_LIVE, OWNED_OBJECT_STATE_OUTDATED, OWNED_OBJECT_STATE_PREPARED, customer_models, firewall_models, change_models, network_models
-from vycinity.serializers import firewall_serializers
+from vycinity.models import OWNED_OBJECT_STATE_LIVE, OWNED_OBJECT_STATE_OUTDATED, OWNED_OBJECT_STATE_PREPARED, basic_models, customer_models, firewall_models, change_models, network_models
 import vycinity.meta.change_management
-from django.contrib.auth.hashers import make_password
-from base64 import b64encode
-import json
+import vycinity.meta.registries
 
 class ChangeManagementBasicTest(TestCase):
     '''
@@ -57,6 +52,8 @@ class ChangeManagementBasicTest(TestCase):
         self.assertEqual(self.ruleset_main_user_modified.pk, changed_ruleset.pk)
         self.private_ruleset_main_user.refresh_from_db()
         self.assertEqual(OWNED_OBJECT_STATE_OUTDATED, self.private_ruleset_main_user.state)
+        self.ruleset_main_user_modified.refresh_from_db()
+        self.assertEqual(OWNED_OBJECT_STATE_LIVE, self.ruleset_main_user_modified.state)
         self.changeset_ruleset_main_user.refresh_from_db()
         self.assertIsNotNone(self.changeset_ruleset_main_user.applied)
 
@@ -77,6 +74,40 @@ class ChangeManagementBasicTest(TestCase):
         self.assertEqual(OWNED_OBJECT_STATE_LIVE, new_ruleset.state)
         self.assertEqual(OWNED_OBJECT_STATE_LIVE, new_dest_address.state)
         self.assertEqual(OWNED_OBJECT_STATE_LIVE, new_basic_rule.state)
+        
+        # Positive Test with hook call
+        a_network_changeset = change_models.ChangeSet.objects.create(owner=self.main_customer, owner_name=self.main_customer.name, user=self.main_user, user_name=self.main_user.name)
+        a_network = network_models.Network.objects.create(owner=self.main_customer, public=False, ipv4_network_address='1.2.3.0', ipv4_network_bits=24, name='a network', layer2_network_id=27, state=OWNED_OBJECT_STATE_LIVE)
+        a_network_changed = network_models.Network.objects.create(owner=self.main_customer, public=False, ipv4_network_address='4.5.6.0', ipv4_network_bits=24, name='a network', layer2_network_id=27, state=OWNED_OBJECT_STATE_PREPARED)
+        change_models.Change.objects.create(changeset=a_network_changeset, entity=network_models.Network.__name__, pre=a_network, post=a_network_changed, action=change_models.ACTION_MODIFIED)
+        test_router = basic_models.Router.objects.create(name='a test router', loopback='3.4.5.6', managed_interface_context=[])
+        test_interface = network_models.ManagedInterface.objects.create(router=test_router, ipv4_address='1.2.3.5', network=a_network)
+        vycinity.meta.change_management.apply_changeset(a_network_changeset)
+        test_interface.refresh_from_db()
+        a_network.refresh_from_db()
+        a_network_changed.refresh_from_db()
+        self.assertEqual(a_network_changed.pk, test_interface.network.pk)
+        self.assertEqual(OWNED_OBJECT_STATE_LIVE, a_network_changed.state)
+        self.assertEqual(OWNED_OBJECT_STATE_OUTDATED, a_network.state)
+
+        # Negative Test Collision on a change should raise an exception
+        ruleset_main_user_modified2 = firewall_models.RuleSet.objects.get(pk=self.private_ruleset_main_user.pk)
+        ruleset_main_user_modified2.id = None
+        ruleset_main_user_modified2.pk = None
+        ruleset_main_user_modified2._state.adding = True
+        ruleset_main_user_modified2.state = OWNED_OBJECT_STATE_PREPARED
+        ruleset_main_user_modified2.comment = 'main private ruleset modified another time'
+        ruleset_main_user_modified2.save()
+        ruleset_main_user_modified2.firewalls.set([self.firewall_main_user])
+        changeset_ruleset_main_user_modified2 = change_models.ChangeSet.objects.create(owner=self.main_customer, owner_name=self.main_customer.name, user=self.main_user, user_name=self.main_user.name)
+        change_models.Change.objects.create(changeset=changeset_ruleset_main_user_modified2, entity=firewall_models.RuleSet.__name__, pre=self.private_ruleset_main_user, post=ruleset_main_user_modified2, action=change_models.ACTION_MODIFIED)
+        try:
+            vycinity.meta.change_management.apply_changeset(changeset_ruleset_main_user_modified2)
+            self.fail('application should fail because it\'s conflicting, but it did not.')
+        except vycinity.meta.change_management.ChangeConflictError:
+            ruleset_main_user_modified2.refresh_from_db()
+            self.assertEqual(OWNED_OBJECT_STATE_PREPARED, ruleset_main_user_modified2.state)
+            
 
 class ChangeManagementConflictTest(TestCase):
     '''

@@ -46,7 +46,8 @@ class Network(OwnedObject):
         # For breaking import loop the import has to be done here
         from vycinity.models import firewall_models
         rtn = []
-        rtn.append(firewall_models.Firewall.objects.get(related_network=self))
+        for referenced_firewall in firewall_models.Firewall.objects.filter(related_network=self):
+            rtn.append(referenced_firewall)
         return rtn
     
     def get_dependent_owned_objects(self) -> List['AbstractOwnedObject']:
@@ -59,6 +60,14 @@ class ManagedInterface(PolymorphicModel):
     ipv4_address = models.GenericIPAddressField(null=True, protocol='IPv4')
     ipv6_address = models.GenericIPAddressField(null=True, protocol='IPv6')
     network = models.ForeignKey(to=Network, on_delete=models.CASCADE)
+
+    @staticmethod
+    def update_networks(pre: Network, post: Network):
+        if pre is not None:
+            for managed_interface in ManagedInterface.objects.filter(network=pre).all():
+                managed_interface.network = post
+                managed_interface.save()
+
 
 class ManagedVRRPInterface(ManagedInterface):
     ipv4_service_address = models.GenericIPAddressField(null=True, protocol='IPv4')
