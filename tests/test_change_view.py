@@ -13,7 +13,6 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with VyCinity. If not, see <https://www.gnu.org/licenses/>.
 
-from datetime import datetime
 from django.test import Client, TestCase
 from requests import Response
 from vycinity.meta import change_management

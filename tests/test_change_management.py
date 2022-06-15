@@ -144,7 +144,7 @@ class ChangeManagementConflictTest(TestCase):
         ruleset_main_user_conflict_modified.state = OWNED_OBJECT_STATE_PREPARED
         ruleset_main_user_conflict_modified.comment = "Another comment"
         ruleset_main_user_conflict_modified.save()
-        second_change = change_models.Change.objects.create(changeset=second_changeset, entity=firewall_models.RuleSet.__name__, pre=self.private_ruleset_main_user, post=ruleset_main_user_conflict_modified, action=change_models.ACTION_MODIFIED)
+        change_models.Change.objects.create(changeset=second_changeset, entity=firewall_models.RuleSet.__name__, pre=self.private_ruleset_main_user, post=ruleset_main_user_conflict_modified, action=change_models.ACTION_MODIFIED)
         vycinity.meta.change_management.apply_changeset(self.changeset_ruleset_main_user)
         with self.assertRaises(vycinity.meta.change_management.ChangeConflictError):
             vycinity.meta.change_management.apply_changeset(second_changeset)
@@ -189,7 +189,7 @@ class ChangeManagementDoubleApplicationTest(TestCase):
 
 class ChangeManagementSemanticsTest(TestCase):
     '''
-    Tests, if application of changesets checks semantics again. Altough the semantics get checked
+    Tests, if application of changesets checks semantics again. Although the semantics get checked
     when adding a change, it's more secure to check it again, when the thing is going live. A
     separate test class is required as the changeset relies on transactions itself and thus
     destroys django's testing logic with transactions.
