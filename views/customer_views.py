@@ -18,11 +18,24 @@ from django.db.models import Q
 from rest_framework import permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.schemas.openapi import AutoSchema
 from rest_framework import status
 from vycinity.models.customer_models import Customer
 from vycinity.serializers.customer_serializers import CustomerSerializer
 
+class CustomerSchema(AutoSchema):
+    def get_serializer(self, path, method):
+        return CustomerSerializer()
+
 class CustomerList(APIView):
+    '''
+    get:
+        Returns visible customers for the current user.
+
+    post:
+        Creates a new customer.
+    '''
+    schema = CustomerSchema(tags=['customer'], operation_id_base='Customer', component_name='Customer')
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, format=None):
@@ -43,6 +56,17 @@ class CustomerList(APIView):
         return Response(data=customer_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class CustomerDetailView(APIView):
+    '''
+    get:
+        Return a specific customer.
+
+    put:
+        Update a customer.
+
+    delete:
+        Delete a customer.
+    '''
+    schema = CustomerSchema(tags=['customer'], operation_id_base='Customer', component_name='Customer')
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, id, format=None):

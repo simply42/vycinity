@@ -15,7 +15,7 @@
 
 from django.urls import path, include
 from rest_framework.schemas import get_schema_view
-from rest_framework.urlpatterns import format_suffix_patterns
+#from rest_framework.urlpatterns import format_suffix_patterns
 from rest_framework.permissions import IsAuthenticated
 
 from vycinity.meta.registries import ChangeableObjectRegistry
@@ -41,4 +41,4 @@ urlpatterns = [
 
 urlpatterns += ChangeableObjectRegistry.instance().create_url_patterns()
 
-urlpatterns = format_suffix_patterns(urlpatterns)
+#urlpatterns = format_suffix_patterns(urlpatterns)

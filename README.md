@@ -18,6 +18,15 @@ INSTALLED_APPS = [
 ]
 ```
 
+## OpenAPI Schema
+
+This app makes use of the integrated api documentation mechanism resulting in a OpenAPI schema. After installing the dependencies, create the schema using the following command:
+
+```
+cd <your project>
+python3 ./manage.py generateschema >schema.yml
+```
+
 ## Licensing and Copyright
 
 This app is developed in 2021 for WorNet AG, WorNet AG is the copyright holder, see [LICENSE](LICENSE) and [COPYING](COPYING) for details about licensing.

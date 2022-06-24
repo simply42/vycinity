@@ -13,24 +13,22 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with VyCinity. If not, see <https://www.gnu.org/licenses/>.
 
+from django.http import Http404
+from rest_framework import permissions
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework import status
 from vycinity.models.basic_models import Router, Vyos13Router, Vyos13StaticConfigSection, Vyos13RouterConfig, Deployment, DEPLOYMENT_STATE_PREPARATION, DEPLOYMENT_STATE_READY
 from vycinity.s42.adapter import vyos13 as Vyos13Adapter
 from vycinity.serializers.basic_serializers import Vyos13RouterSerializer, Vyos13StaticConfigSectionSerializer, Vyos13RouterConfigSerializer, DeploymentSerializer
 from vycinity.tasks import deploy
-
-from django.views.decorators.csrf import csrf_exempt
-from django.shortcuts import render
-from django.http import HttpResponse, JsonResponse, Http404
-from rest_framework import permissions
-from rest_framework.parsers import JSONParser
-from rest_framework.response import Response
-from rest_framework.views import APIView
-from rest_framework import status
+from vycinity.views import GenericSchema
 
 class Vyos13RouterList(APIView):
-    """
-    comment
-    """
+    '''
+    Management of VyOS Routers with at least version 1.3.0
+    '''
+    schema = GenericSchema(serializer=Vyos13RouterSerializer, tags=['router', 'vyos 1.3'], operation_id_base='Vyos13Router', component_name='Vyos13Router')
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, format=None):
@@ -47,6 +45,10 @@ class Vyos13RouterList(APIView):
 
 
 class Vyos13RouterDetailView(APIView):
+    '''
+    Management of VyOS Routers with at least version 1.3.0
+    '''
+    schema = GenericSchema(serializer=Vyos13RouterSerializer, tags=['router', 'vyos 1.3'], operation_id_base='Vyos13Router', component_name='Vyos13Router')
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, id, format=None):
@@ -91,9 +93,10 @@ class Vyos13RouterDetailView(APIView):
             raise Http404()
 
 class Vyos13StaticConfigSectionList(APIView):
-    """
-    comment
-    """
+    '''
+    Management of static configuration sections for VyOS 1.3
+    '''
+    schema = GenericSchema(serializer=Vyos13StaticConfigSectionSerializer, tags=['static config section', 'vyos 1.3'], operation_id_base='Vyos13StaticConfigSection', component_name='Vyos13StaticConfigSection')
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, format=None):
@@ -109,6 +112,10 @@ class Vyos13StaticConfigSectionList(APIView):
 
 
 class Vyos13StaticConfigSectionDetail(APIView):
+    '''
+    Management of static configuration sections for VyOS 1.3
+    '''
+    schema = GenericSchema(serializer=Vyos13StaticConfigSectionSerializer, tags=['static config section', 'vyos 1.3'], operation_id_base='Vyos13StaticConfigSection', component_name='Vyos13StaticConfigSection')
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, id, format=None):
@@ -154,9 +161,11 @@ class Vyos13StaticConfigSectionDetail(APIView):
 
 
 class DeploymentList(APIView):
-    """
-    comment
-    """
+    '''
+    get:
+        Retrieve information about triggered deployments to routers.
+    '''
+    schema = GenericSchema(serializer=DeploymentSerializer, tags=['deployment'], operation_id_base='Deployment', component_name='Deployment')
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, format=None):
@@ -165,22 +174,14 @@ class DeploymentList(APIView):
 
 
 class Vyos13RouterConfigList(APIView):
-    """
-    Liste der Router Configs für Vysen
-    """
+    '''
+    get:
+        The list for configuration for VyOS 1.3 routers
+    '''
+    schema = GenericSchema(serializer=Vyos13RouterConfigSerializer, tags=['router', 'vyos 1.3', 'configuration'], operation_id_base='Vyos13RouterConfig', component_name='Vyos13RouterConfig')
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, format=None):
         all_configs = Vyos13RouterConfig.objects.all()
         return Response(Vyos13RouterConfigSerializer(all_configs, many=True).data)
 
-# def router_list(request):
-#     if request.method == 'GET':
-#         all_routers = Router.objects.all()
-#         for i in range(len(all_routers)):
-#             try:
-#                 if all_routers[i].vyos13router != None:
-#                     all_routers[i].type = "vyos13"
-#             except:
-#                 all_routers[i].type = "unknown"
-#         return JsonResponse(RouterSerializer(all_routers, many=True).data, safe=False)

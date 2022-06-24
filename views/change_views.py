@@ -14,14 +14,41 @@
 # along with VyCinity. If not, see <https://www.gnu.org/licenses/>.
 
 from rest_framework import permissions, status
-from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.schemas.openapi import AutoSchema
+from rest_framework.views import APIView
 from vycinity.models import change_models
 from vycinity.serializers import change_serializers
 from vycinity.meta import change_management
 
+class ChangeSetListSchema(AutoSchema):
+    '''
+    A schema generator for the ChangeSetList.
+    '''
+
+    def get_serializer(self, path, method):
+        return change_serializers.ChangeSetSerializer()
+
+    def get_request_serializer(self, path, method):
+        return change_serializers.ChangeSetSerializer()
+
+    def get_response_serializer(self, path, method):
+        return change_serializers.ChangeSetSerializer()
+
+
 class ChangeSetList(APIView):
+    '''
+    A changeset is a collection of changes.
+
+    get:
+    Retrieve changesets.
+
+    post:
+    Create an empty changeset.
+    '''
+
     permission_classes = [permissions.IsAuthenticated]
+    schema = ChangeSetListSchema(tags=['changeset'], operation_id_base='ChangeSet', component_name='ChangeSet')
 
     def get(self, request, format=None):
         change_sets = change_models.ChangeSet.objects.filter(owner__in=request.user.customer.get_visible_customers())
@@ -34,7 +61,21 @@ class ChangeSetList(APIView):
 
 
 class ChangeSetDetailView(APIView):
+    '''
+    A changeset is a collection of changes.
+
+    get:
+    Retrieve a single changeset.
+
+    put:
+    Apply a changeset. The changeset included in the request is ignored (prefectly fine to send just `{}`). 
+
+    delete:
+    Delete a changeset. As a changeset does also document changes, only non-applied changesets may be deleted.
+    '''
+    
     permission_classes = [permissions.IsAuthenticated]
+    schema = ChangeSetListSchema(tags=['changeset'], operation_id_base='ChangeSet', component_name='ChangeSet')
 
     def get(self, request, id, format=None):
         try:

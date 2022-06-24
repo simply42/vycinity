@@ -19,6 +19,7 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.schemas.openapi import AutoSchema
 from rest_framework.serializers import Serializer
 from vycinity.models import OWNED_OBJECT_STATE_DELETED, OWNED_OBJECT_STATE_PREPARED, customer_models, change_models, OwnedObject, OWNED_OBJECT_STATE_LIVE
 from typing import Any, List, Dict, Type
@@ -53,6 +54,27 @@ class ValidationResult:
         return self.access_ok and len(self.errors) == 0
 
 VALIDATION_OK = ValidationResult(access_ok=True, errors=[])
+
+class GenericOwnedObjectSchema(AutoSchema):
+    def __init__(self, serializer: Type[Serializer], **kwargs):
+        super().__init__(**kwargs)
+        self.serializer = serializer
+
+    def get_operation(self, path, method):
+        current_operation = super().get_operation(path, method)
+        current_operation['parameters'].append({'name': 'changeset', 'in': 'query', 'description': 'The changeset as context for the current operation', 'required': False, 'schema': {'type': 'string', 'example': 'fe056b4b-9ca6-43c1-91e3-74b80fcca7da'}})
+        return current_operation
+
+    def get_serializer(self, path, method):
+        return self.serializer()
+
+class GenericSchema(AutoSchema):
+    def __init__(self, serializer: Type[Serializer], **kwargs):
+        super().__init__(**kwargs)
+        self.serializer = serializer
+    
+    def get_serializer(self, path, method):
+        return self.serializer()
 
 class GenericOwnedObjectList(APIView, ABC):
     permission_classes = [IsAuthenticated]
@@ -141,7 +163,6 @@ class GenericOwnedObjectList(APIView, ABC):
                     rtn_status = status.HTTP_403_FORBIDDEN
                 return Response(data=semantic_validation.errors, status=rtn_status)
         return Response(data=serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 
 class GenericOwnedObjectDetail(APIView):
     permission_classes = [IsAuthenticated]

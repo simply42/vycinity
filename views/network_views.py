@@ -17,16 +17,26 @@ from django.http import Http404
 from rest_framework import permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.schemas.openapi import AutoSchema
 from rest_framework.serializers import Serializer
 from rest_framework import status
 from typing import Any, List, Type
 from vycinity.models import OWNED_OBJECT_STATE_LIVE, OWNED_OBJECT_STATE_PREPARED, change_models, customer_models, OwnedObject
 from vycinity.models.network_models import Network, ManagedInterface, ManagedVRRPInterface
 from vycinity.serializers.network_serializers import NetworkSerializer, ManagedInterfaceSerializer, ManagedVRRPInterfaceSerializer
-from vycinity.views import GenericOwnedObjectDetail, GenericOwnedObjectList, ValidationResult
+from vycinity.views import GenericOwnedObjectDetail, GenericOwnedObjectList, ValidationResult, GenericOwnedObjectSchema, GenericSchema
 
 
 class NetworkList(GenericOwnedObjectList):
+    '''
+    get:
+        Retrieve the list of networks.
+
+    post:
+        Create a new network.
+    '''
+    schema = GenericOwnedObjectSchema(NetworkSerializer, tags=['network'], operation_id_base='Network', component_name='Name')
+
     def filter_attributes(self, object_list: List[Any], customer: customer_models.Customer):
         return object_list
 
@@ -62,6 +72,18 @@ class NetworkList(GenericOwnedObjectList):
 
 
 class NetworkDetailView(GenericOwnedObjectDetail):
+    '''
+    get:
+        Retrieve the a network.
+
+    put:
+        Update a network.
+
+    delete:
+        Delete a network.
+    '''
+    schema = GenericOwnedObjectSchema(NetworkSerializer, tags=['network'], operation_id_base='Network', component_name='Name')
+
     def filter_attributes(self, object: Any, customer: customer_models.Customer):
         return object
 
@@ -74,8 +96,15 @@ class NetworkDetailView(GenericOwnedObjectDetail):
     def put_validate(self, object: Any, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
         return NetworkList.validate_network_semantically(object, customer, changeset)
 
-
 class ManagedInterfaceList(APIView):
+    '''
+    get:
+        Return all managed interfaces.
+
+    post:
+        Create a managed interface.
+    '''
+    schema = GenericSchema(serializer=ManagedInterfaceSerializer, tags=['managed interface'], operation_id_base='ManagedInterface', component_name='ManagedInterface')
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, format=None):
@@ -90,6 +119,17 @@ class ManagedInterfaceList(APIView):
         return Response(data=serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class ManagedInterfaceDetailView(APIView):
+    '''
+    get:
+        Return a single managed interfaces.
+
+    put:
+        Update a managed interface.
+    
+    delete:
+        Delete a managed interface.
+    '''
+    schema = GenericSchema(serializer=ManagedInterfaceSerializer, tags=['managed interface'], operation_id_base='ManagedInterface', component_name='ManagedInterface')
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, id, format=None):
@@ -118,8 +158,15 @@ class ManagedInterfaceDetailView(APIView):
         except ManagedInterface.DoesNotExist:
             raise Http404()
 
-
 class ManagedVRRPInterfaceList(APIView):
+    '''
+    get:
+        Retrieve all managed interfaces with redundancy via VRRP.
+
+    post:
+        Create a managed interface with redundancy via VRRP.
+    '''
+    schema = GenericSchema(serializer=ManagedVRRPInterfaceSerializer, tags=['managed interface', 'managed vrrp interface'], operation_id_base='ManagedVRRPInterface', component_name='ManagedVRRPInterface')
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, format=None):
@@ -134,6 +181,17 @@ class ManagedVRRPInterfaceList(APIView):
         return Response(data=serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class ManagedVRRPInterfaceDetailView(APIView):
+    '''
+    get:
+        Retrieve a specific managed VRRP interface.
+
+    put:
+        Update a managed VRRP interface.
+
+    delete:
+        Update a managed VRRP interface.
+    '''
+    schema = GenericSchema(serializer=ManagedVRRPInterfaceSerializer, tags=['managed interface', 'managed vrrp interface'], operation_id_base='ManagedVRRPInterface', component_name='ManagedVRRPInterface')
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, id, format=None):
