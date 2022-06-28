@@ -61,4 +61,4 @@ class LocalUserAuthentication(authentication.BaseAuthentication):
         raise exceptions.AuthenticationFailed('Authentication failed')
 
     def authenticate_header(self, request):
-        return "Authentication required"
+        return 'Basic realm="VyCinity User", charset="UTF-8"'
