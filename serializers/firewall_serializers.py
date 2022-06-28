@@ -39,10 +39,10 @@ class OwnedObjectRelatedField(serializers.RelatedField):
 class FirewallSerializer(serializers.ModelSerializer):
     class Meta:
         model = firewall_models.Firewall
-        fields = ['uuid', 'owner', 'stateful', 'name', 'network', 'default_action_into', 'default_action_from', 'public']
+        fields = ['uuid', 'owner', 'stateful', 'name', 'related_network', 'default_action_into', 'default_action_from', 'public']
         read_only_fields = ['uuid']
     owner = serializers.PrimaryKeyRelatedField(queryset=customer_models.Customer.objects.all(), pk_field=serializers.UUIDField(format='hex_verbose'), required=True)
-    network = OwnedObjectRelatedField(queryset=firewall_models.Firewall.objects.all(), required=False)
+    related_network = OwnedObjectRelatedField(queryset=network_models.Network.objects.all(), required=False)
 
 class RuleSetSerializer(serializers.ModelSerializer):
     class Meta:
@@ -55,9 +55,9 @@ class RuleSetSerializer(serializers.ModelSerializer):
 class RuleSerializer(serializers.ModelSerializer):
     class Meta:
         model = firewall_models.Rule
-        fields = ['uuid', 'ruleset', 'priority', 'comment', 'disable']
+        fields = ['uuid', 'related_ruleset', 'priority', 'comment', 'disable']
         read_only_fields = ['uuid']
-    ruleset = OwnedObjectRelatedField(queryset=firewall_models.RuleSet.objects.all(), required=True)
+    related_ruleset = OwnedObjectRelatedField(queryset=firewall_models.RuleSet.objects.all(), required=True)
 
 class AddressObjectSerializer(serializers.ModelSerializer):
     class Meta:
@@ -76,9 +76,9 @@ class ServiceObjectSerializer(serializers.ModelSerializer):
 class BasicRuleSerializer(serializers.ModelSerializer):
     class Meta:
         model = firewall_models.BasicRule
-        fields = ['uuid', 'ruleset', 'priority', 'comment', 'disable', 'source_address', 'destination_address', 'destination_service', 'action', 'log']
+        fields = ['uuid', 'related_ruleset', 'priority', 'comment', 'disable', 'source_address', 'destination_address', 'destination_service', 'action', 'log']
         read_only_fields = ['uuid']
-    ruleset = OwnedObjectRelatedField(source='related_ruleset', queryset=firewall_models.RuleSet.objects.all(), required=True)
+    related_ruleset = OwnedObjectRelatedField(queryset=firewall_models.RuleSet.objects.all(), required=True)
     source_address = OwnedObjectRelatedField(queryset=firewall_models.AddressObject.objects.all(), required=False)
     destination_address = OwnedObjectRelatedField(queryset=firewall_models.AddressObject.objects.all(), required=True)
     destination_service = OwnedObjectRelatedField(queryset=firewall_models.ServiceObject.objects.all(), required=False)
@@ -86,17 +86,17 @@ class BasicRuleSerializer(serializers.ModelSerializer):
 class CustomRuleSerializer(serializers.ModelSerializer):
     class Meta:
         model = firewall_models.CustomRule
-        fields = ['id', 'ruleset', 'priority', 'comment', 'disable', 'ip_version', 'rule']
+        fields = ['id', 'related_ruleset', 'priority', 'comment', 'disable', 'ip_version', 'rule']
         read_only_fields = ['id']
-    ruleset = OwnedObjectRelatedField(queryset=firewall_models.RuleSet.objects.all(), required=True)
+    related_ruleset = OwnedObjectRelatedField(queryset=firewall_models.RuleSet.objects.all(), required=True)
 
 class NetworkAddressObjectSerializer(serializers.ModelSerializer):
     class Meta:
         model = firewall_models.NetworkAddressObject
-        fields = ['uuid', 'name', 'owner', 'public', 'network']
+        fields = ['uuid', 'name', 'owner', 'public', 'related_network']
         read_only_fields = ['uuid']
     owner = serializers.PrimaryKeyRelatedField(queryset=customer_models.Customer.objects.all(), pk_field=serializers.UUIDField(format='hex_verbose'), required=True)
-    network = OwnedObjectRelatedField(queryset=network_models.Network.objects.all(), required=True)
+    related_network = OwnedObjectRelatedField(queryset=network_models.Network.objects.all(), required=True)
 
 class CIDRAddressObjectSerializer(serializers.ModelSerializer):
     class Meta:

@@ -100,7 +100,7 @@ class Rule(SemiOwnedObject):
 
     @staticmethod
     def filter_query_by_customers_or_public(query: Any, customers: List[customer_models.Customer]):
-        return query.filter(models.Q(ruleset__owner__in = customers) | models.Q(ruleset__public = True))
+        return query.filter(models.Q(related_ruleset__owner__in = customers) | models.Q(related_ruleset__public = True))
 
     def get_related_owned_objects(self) -> List[AbstractOwnedObject]:
         if hasattr(self, 'basicrule'):
