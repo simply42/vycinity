@@ -13,7 +13,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with VyCinity. If not, see <https://www.gnu.org/licenses/>.
 
-from django.http import Http404
+from django.http import Http404, HttpResponseForbidden
 from rest_framework import permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -108,10 +108,14 @@ class ManagedInterfaceList(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, format=None):
+        if request.user.customer.parent_customer is not None:
+            return HttpResponseForbidden()
         all_managed_interfaces = ManagedInterface.objects.all()
         return Response(ManagedInterfaceSerializer(all_managed_interfaces, many=True).data)
 
     def post(self, request, format=None):
+        if request.user.customer.parent_customer is not None:
+            return HttpResponseForbidden()
         serializer = ManagedInterfaceSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -133,6 +137,8 @@ class ManagedInterfaceDetailView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, id, format=None):
+        if request.user.customer.parent_customer is not None:
+            return HttpResponseForbidden()
         try:
             managed_interface = ManagedInterface.objects.get(pk=id)
             return Response(ManagedInterfaceSerializer(managed_interface).data)
@@ -140,6 +146,8 @@ class ManagedInterfaceDetailView(APIView):
             raise Http404()
     
     def put(self, request, id, format=None):
+        if request.user.customer.parent_customer is not None:
+            return HttpResponseForbidden()
         try:
             managed_interface = ManagedInterface.objects.get(pk=id)
             serializer = ManagedInterfaceSerializer(managed_interface, data=request.data)
@@ -151,6 +159,8 @@ class ManagedInterfaceDetailView(APIView):
             raise Http404()
 
     def delete(self, request, id, format=None):
+        if request.user.customer.parent_customer is not None:
+            return HttpResponseForbidden()
         try:
             managed_interface = ManagedInterface.objects.get(pk=id)
             managed_interface.delete()
@@ -170,10 +180,14 @@ class ManagedVRRPInterfaceList(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, format=None):
+        if request.user.customer.parent_customer is not None:
+            return HttpResponseForbidden()
         all_managed_vrrp_interfaces = ManagedVRRPInterface.objects.all()
         return Response(ManagedVRRPInterfaceSerializer(all_managed_vrrp_interfaces, many=True).data)
 
     def post(self, request, format=None):
+        if request.user.customer.parent_customer is not None:
+            return HttpResponseForbidden()
         serializer = ManagedVRRPInterfaceSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -195,6 +209,8 @@ class ManagedVRRPInterfaceDetailView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, id, format=None):
+        if request.user.customer.parent_customer is not None:
+            return HttpResponseForbidden()
         try:
             managed_vrrp_interface = ManagedVRRPInterface.objects.get(pk=id)
             return Response(ManagedVRRPInterfaceSerializer(managed_vrrp_interface).data)
@@ -202,6 +218,8 @@ class ManagedVRRPInterfaceDetailView(APIView):
             raise Http404()
     
     def put(self, request, id, format=None):
+        if request.user.customer.parent_customer is not None:
+            return HttpResponseForbidden()
         try:
             managed_vrrp_interface = ManagedVRRPInterface.objects.get(pk=id)
             serializer = ManagedVRRPInterfaceSerializer(managed_vrrp_interface, data=request.data)
@@ -213,6 +231,8 @@ class ManagedVRRPInterfaceDetailView(APIView):
             raise Http404()
 
     def delete(self, request, id, format=None):
+        if request.user.customer.parent_customer is not None:
+            return HttpResponseForbidden()
         try:
             managed_vrrp_interface = ManagedVRRPInterface.objects.get(pk=id)
             managed_vrrp_interface.delete()
