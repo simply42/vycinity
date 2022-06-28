@@ -276,11 +276,11 @@ class GenericAPITest(TestCase):
         ruleset_in_changeset.firewalls.set([self.firewall_main_user])
         change_models.Change.objects.create(changeset=changeset, entity=firewall_models.RuleSet.__name__, post=ruleset_in_changeset)
         
-        response = c.post('/api/v1/rules/basic?changeset={}'.format(changeset.id), {'ruleset': str(ruleset_in_changeset.uuid), 'priority': 10, 'disable': False, 'destination_address': str(any_address_object.uuid), 'log': False, 'action': 'accept'}, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
+        response = c.post('/api/v1/rules/basic?changeset={}'.format(changeset.id), {'related_ruleset': str(ruleset_in_changeset.uuid), 'priority': 10, 'disable': False, 'destination_address': str(any_address_object.uuid), 'log': False, 'action': 'accept'}, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(201, response.status_code)
         content = response.json()
         self.assertTrue(isinstance(content, dict))
-        self.assertEqual(str(ruleset_in_changeset.uuid), content['ruleset'])
+        self.assertEqual(str(ruleset_in_changeset.uuid), content['related_ruleset'])
         self.assertEqual(10, content['priority'])
         self.assertEqual(str(any_address_object.uuid), content['destination_address'])
         self.assertFalse(content['disable'])
@@ -304,7 +304,7 @@ class GenericAPITest(TestCase):
         # bad case: the referenced object was already deleted in the changeset
         self.changeset_ruleset_main_user.post = None
         self.changeset_ruleset_main_user.save()
-        response = c.post('/api/v1/rules/basic?changeset={}'.format(self.changeset_ruleset_main_user.id), {'ruleset': str(self.private_ruleset_main_user.id), 'priority': 10, 'disable': False, 'destination_address': str(any_address_object.id), 'log': False, 'action': 'accept'}, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
+        response = c.post('/api/v1/rules/basic?changeset={}'.format(self.changeset_ruleset_main_user.id), {'related_ruleset': str(self.private_ruleset_main_user.id), 'priority': 10, 'disable': False, 'destination_address': str(any_address_object.id), 'log': False, 'action': 'accept'}, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(400, response.status_code)
         
     def test_put_ruleset(self):
