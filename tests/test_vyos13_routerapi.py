@@ -112,7 +112,7 @@ class Vyos13RouterAPITest(TestCase):
             'token': 'dev345',
             'fingerprint': 'fedcba9876543210'
         }
-        response = c.put('/api/v1/routers/vyos13/{}'.format(self.test_router.id), data=router_data, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.root_authorization)
+        response = c.put('/api/v1/routers/vyos13/{}'.format(self.test_router.id), data=router_data, content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.root_authorization)
         self.assertEqual(200, response.status_code)
         content = response.json()
         self.assertEqual(str(self.test_router.id), content['id'])
@@ -140,7 +140,7 @@ class Vyos13RouterAPITest(TestCase):
             'token': 'dev345',
             'fingerprint': 'fedcba9876543210'
         }
-        response = c.put('/api/v1/routers/vyos13/{}'.format(self.test_router.id), data=router_data, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.child_authorization)
+        response = c.put('/api/v1/routers/vyos13/{}'.format(self.test_router.id), data=router_data, content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.child_authorization)
         self.assertEqual(403, response.status_code)
         
     def test_put_router_non_existent(self):
@@ -153,7 +153,7 @@ class Vyos13RouterAPITest(TestCase):
             'token': 'dev345',
             'fingerprint': 'fedcba9876543210'
         }
-        response = c.put('/api/v1/routers/vyos13/{}'.format(uuid.uuid4()), data=router_data, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.root_authorization)
+        response = c.put('/api/v1/routers/vyos13/{}'.format(uuid.uuid4()), data=router_data, content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.root_authorization)
         self.assertEqual(404, response.status_code)
 
     def test_delete_router_good(self):
