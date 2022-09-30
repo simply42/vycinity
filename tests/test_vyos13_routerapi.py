@@ -1,8 +1,10 @@
 from base64 import b64encode
+from celery import Task
 from django.test import Client, TestCase
 from django.contrib.auth.hashers import make_password
 import uuid
 from vycinity.models import basic_models, customer_models
+from unittest.mock import Mock, patch
 
 class Vyos13RouterAPITest(TestCase):
     '''
@@ -112,8 +114,11 @@ class Vyos13RouterAPITest(TestCase):
             'token': 'dev345',
             'fingerprint': 'fedcba9876543210'
         }
-        response = c.put('/api/v1/routers/vyos13/{}'.format(self.test_router.id), data=router_data, content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.root_authorization)
-        self.assertEqual(200, response.status_code)
+        mocked_task = Mock(Task)
+        with patch('vycinity.tasks.deploy', new=mocked_task), patch('vycinity.views.basic_views.deploy', new=mocked_task):
+            response = c.put('/api/v1/routers/vyos13/{}'.format(self.test_router.id), data=router_data, content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.root_authorization)
+            self.assertEqual(200, response.status_code)
+            mocked_task.assert_called_once()
         content = response.json()
         self.assertEqual(str(self.test_router.id), content['id'])
         self.assertEqual('testrouter', content['name'])

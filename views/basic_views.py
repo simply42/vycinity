@@ -66,7 +66,7 @@ class Vyos13RouterDetailView(APIView):
             serializer = Vyos13RouterSerializer(result, data=request.data)
             if serializer.is_valid():
                 trigger_deploy = False
-                if 'active_static_configs' in serializer.validated_data and serializer.validated_data['active_static_configs'] != result.active_static_configs:
+                if ('active_static_configs' in serializer.validated_data and serializer.validated_data['active_static_configs'] != result.active_static_configs) or (not result.deploy and serializer.validated_data['deploy']):
                     trigger_deploy = True
                 serializer.save()
                 result.refresh_from_db()
