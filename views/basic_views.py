@@ -168,7 +168,7 @@ class DeploymentList(APIView):
         Retrieve information about triggered deployments to routers.
     '''
     schema = GenericSchema(serializer=DeploymentSerializer, tags=['deployment'], operation_id_base='Deployment', component_name='Deployment')
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsRootCustomer]
 
     def get(self, request, format=None):
         all_deployments = Deployment.objects.all()
@@ -181,7 +181,7 @@ class Vyos13RouterConfigList(APIView):
         The list for configuration for VyOS 1.3 routers
     '''
     schema = GenericSchema(serializer=Vyos13RouterConfigSerializer, tags=['router', 'vyos 1.3', 'configuration'], operation_id_base='Vyos13RouterConfig', component_name='Vyos13RouterConfig')
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsRootCustomer]
 
     def get(self, request, format=None):
         all_configs = Vyos13RouterConfig.objects.all()
