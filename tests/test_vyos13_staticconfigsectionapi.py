@@ -61,5 +61,106 @@ class Vyos13StaticConfigSectionAPITest(TestCase):
         self.assertDictEqual(saved_scs.content, new_scs['content'])
         self.assertListEqual(saved_scs.context, new_scs['context'])
 
+    def test_create_staticconfigsections_non_root_customer(self):
+        c = Client()
+        new_scs = {
+            'description': 'domain name',
+            'context': ['system'],
+            'absolute': False,
+            'content': {'domain-name': 'example.com'}
+        }
+        response = c.post('/api/v1/scs/vyos13', data=new_scs, content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.child_authorization)
+        self.assertEqual(403, response.status_code)
+
+    def test_read_staticconfigsection_good(self):
+        c = Client()
+        response = c.get('/api/v1/scs/vyos13/{}'.format(self.test_static_config_section.id), HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.root_authorization)
+        self.assertEqual(200, response.status_code)
+        content = response.json()
+        self.assertEqual(content['id'], str(self.test_static_config_section.id))
+        self.assertEqual(content['description'], self.test_static_config_section.description)
+        self.assertTrue(content['absolute'])
+        self.assertDictEqual(content['content'], { 'server': {'time1.example.com':{}}})
+        self.assertListEqual(content['context'], ['system', 'ntp'])
+
+    def test_read_staticconfigsection_non_root_customer(self):
+        c = Client()
+        response = c.get('/api/v1/scs/vyos13/{}'.format(self.test_static_config_section.id), HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.child_authorization)
+        self.assertEqual(403, response.status_code)
+        
+    def test_read_staticconfigsection_non_existent(self):
+        c = Client()
+        response = c.get('/api/v1/scs/vyos13/{}'.format(uuid.uuid4()), HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.root_authorization)
+        self.assertEqual(404, response.status_code)
+
+    def test_update_staticconfigsection_good(self):
+        c = Client()
+        new_scs = {
+            'description': 'updated ntp config',
+            'absolute': True,
+            'content': { 'server': {'time2.example.com':{}}},
+            'context': ['system', 'ntp']
+        }
+        response = c.put('/api/v1/scs/vyos13/{}'.format(self.test_static_config_section.id), data=new_scs, content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.root_authorization)
+        self.assertEqual(200, response.status_code)
+        content = response.json()
+        self.assertEqual(content['id'], str(self.test_static_config_section.id))
+        self.assertEqual(content['description'], new_scs['description'])
+        self.assertTrue(content['absolute'])
+        self.assertDictEqual(content['content'], new_scs['content'])
+        self.assertListEqual(content['context'], new_scs['context'])
+        self.test_static_config_section.refresh_from_db()
+        self.assertEqual(content['description'], self.test_static_config_section.description)
+        self.assertTrue(self.test_static_config_section.absolute)
+        self.assertDictEqual(content['content'], self.test_static_config_section.content)
+        self.assertListEqual(content['context'], self.test_static_config_section.context)
+
+    def test_update_staticconfigsection_non_root_customer(self):
+        c = Client()
+        new_scs = {
+            'description': 'updated ntp config',
+            'absolute': True,
+            'content': { 'server': {'time2.example.com':{}}},
+            'context': ['system', 'ntp']
+        }
+        response = c.put('/api/v1/scs/vyos13/{}'.format(self.test_static_config_section.id), data=new_scs, content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.child_authorization)
+        self.assertEqual(403, response.status_code)
+        
+    def test_update_staticconfigsection_non_existent(self):
+        c = Client()
+        new_scs = {
+            'description': 'updated ntp config',
+            'absolute': True,
+            'content': { 'server': {'time2.example.com':{}}},
+            'context': ['system', 'ntp']
+        }
+        response = c.put('/api/v1/scs/vyos13/{}'.format(uuid.uuid4()), data=new_scs, content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.root_authorization)
+        self.assertEqual(404, response.status_code)
     
-    
+    def test_delete_staticconfigsection_good(self):
+        c = Client()
+        old_scs_id = self.test_static_config_section.id
+        response = c.delete('/api/v1/scs/vyos13/{}'.format(old_scs_id), HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.root_authorization)
+        self.assertEqual(204, response.status_code)
+        
+        try:
+            basic_models.Vyos13StaticConfigSection.object.get(id=old_scs_id)
+            self.fail('Static config section deleted, but is still there')
+        except basic_models.Vyos13StaticConfigSection.DoesNotExist:
+            pass
+
+    def test_delete_staticconfigsection_non_root_customer(self):
+        c = Client()
+        old_scs_id = self.test_static_config_section.id
+        response = c.delete('/api/v1/scs/vyos13/{}'.format(old_scs_id), HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.child_authorization)
+        self.assertEqual(403, response.status_code)
+        
+        try:
+            basic_models.Vyos13StaticConfigSection.object.get(id=old_scs_id)
+        except basic_models.Vyos13StaticConfigSection.DoesNotExist:
+            self.fail('Static config section deleted as non root (should not be allowed), but does not more exist')
+        
+    def test_delete_staticconfigsection_non_existent(self):
+        c = Client()
+        response = c.delete('/api/v1/scs/vyos13/{}'.format(uuid.uuid4()), HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.root_authorization)
+        self.assertEqual(404, response.status_code)
