@@ -118,6 +118,8 @@ class ManagedInterfaceList(APIView):
             return HttpResponseForbidden()
         serializer = ManagedInterfaceSerializer(data=request.data)
         if serializer.is_valid():
+            if serializer.validated_data['network'].state != OWNED_OBJECT_STATE_LIVE:
+                return Response(data={'network': 'Network must be applied and still live'}, status=status.HTTP_400_BAD_REQUEST)
             serializer.save()
             return Response(data=serializer.data, status=status.HTTP_201_CREATED)
         return Response(data=serializer.errors, status=status.HTTP_400_BAD_REQUEST)
