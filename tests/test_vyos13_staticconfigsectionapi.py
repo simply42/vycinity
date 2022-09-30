@@ -1,8 +1,10 @@
 from base64 import b64encode
+from celery import Task
 from django.test import Client, TestCase
 from django.contrib.auth.hashers import make_password
 import uuid
 from vycinity.models import basic_models, customer_models
+from unittest.mock import Mock, patch
 
 class Vyos13StaticConfigSectionAPITest(TestCase):
     '''
@@ -93,6 +95,8 @@ class Vyos13StaticConfigSectionAPITest(TestCase):
         response = c.get('/api/v1/scs/vyos13/{}'.format(uuid.uuid4()), HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.root_authorization)
         self.assertEqual(404, response.status_code)
 
+    @patch('vycinity.tasks.deploy', new=Mock(Task))
+    @patch('vycinity.views.basic_views.deploy', new=Mock(Task))
     def test_update_staticconfigsection_good(self):
         c = Client()
         new_scs = {
@@ -144,7 +148,7 @@ class Vyos13StaticConfigSectionAPITest(TestCase):
         self.assertEqual(204, response.status_code)
         
         try:
-            basic_models.Vyos13StaticConfigSection.object.get(id=old_scs_id)
+            basic_models.Vyos13StaticConfigSection.objects.get(id=old_scs_id)
             self.fail('Static config section deleted, but is still there')
         except basic_models.Vyos13StaticConfigSection.DoesNotExist:
             pass
@@ -156,7 +160,7 @@ class Vyos13StaticConfigSectionAPITest(TestCase):
         self.assertEqual(403, response.status_code)
         
         try:
-            basic_models.Vyos13StaticConfigSection.object.get(id=old_scs_id)
+            basic_models.Vyos13StaticConfigSection.objects.get(id=old_scs_id)
         except basic_models.Vyos13StaticConfigSection.DoesNotExist:
             self.fail('Static config section deleted as non root (should not be allowed), but does not more exist')
         

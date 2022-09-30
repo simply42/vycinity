@@ -99,7 +99,7 @@ class Vyos13StaticConfigSectionList(APIView):
     Management of static configuration sections for VyOS 1.3
     '''
     schema = GenericSchema(serializer=Vyos13StaticConfigSectionSerializer, tags=['static config section', 'vyos 1.3'], operation_id_base='Vyos13StaticConfigSection', component_name='Vyos13StaticConfigSection')
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsRootCustomer]
 
     def get(self, request, format=None):
         all_static_configs = Vyos13StaticConfigSection.objects.all()
@@ -118,7 +118,7 @@ class Vyos13StaticConfigSectionDetail(APIView):
     Management of static configuration sections for VyOS 1.3
     '''
     schema = GenericSchema(serializer=Vyos13StaticConfigSectionSerializer, tags=['static config section', 'vyos 1.3'], operation_id_base='Vyos13StaticConfigSection', component_name='Vyos13StaticConfigSection')
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsRootCustomer]
 
     def get(self, request, id, format=None):
         try:
