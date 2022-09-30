@@ -75,7 +75,7 @@ class Vyos13RouterDetailView(APIView):
                     deployment = Deployment(change='changed router', state=DEPLOYMENT_STATE_PREPARATION)
                     deployment.save()
                     generated_config = Vyos13Adapter.generateConfig(result)
-                    config = Vyos13RouterConfig(router=result, config=generated_config.config)
+                    config = Vyos13RouterConfig.objects.create(router=result, config=generated_config.config)
                     deployment.configs.add(config)
                     deployment.state = DEPLOYMENT_STATE_READY
                     deployment.save()

@@ -118,7 +118,7 @@ class Vyos13RouterAPITest(TestCase):
         with patch('vycinity.tasks.deploy', new=mocked_task), patch('vycinity.views.basic_views.deploy', new=mocked_task):
             response = c.put('/api/v1/routers/vyos13/{}'.format(self.test_router.id), data=router_data, content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.root_authorization)
             self.assertEqual(200, response.status_code)
-            mocked_task.assert_called_once()
+            self.assertEqual(1, len(mocked_task.mock_calls))
         content = response.json()
         self.assertEqual(str(self.test_router.id), content['id'])
         self.assertEqual('testrouter', content['name'])
