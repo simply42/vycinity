@@ -38,6 +38,14 @@ class Vyos13Router(Router):
     fingerprint = models.CharField(max_length=256, blank=False)
     active_static_configs = models.ManyToManyField(Vyos13StaticConfigSection, blank=True)
 
+class LiveRouterConfig(PolymorphicModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    retrieved = models.DateTimeField(null=True)
+    router = models.ForeignKey(Router, on_delete=models.CASCADE, null=False)
+
+class Vyos13LiveRouterConfig(LiveRouterConfig):
+    config = models.JSONField(null=True)
+
 class RouterConfig(PolymorphicModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     created = models.DateTimeField(auto_now_add=True)

@@ -28,6 +28,12 @@ class Vyos13StaticConfigSectionSerializer(serializers.ModelSerializer):
         fields = ['id', 'context', 'description', 'absolute', 'content']
         read_only_fields = ['id']
 
+class Vyos13LiveRouterConfigSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = basic_models.Vyos13LiveRouterConfig
+        fields = ['id', 'retrieved', 'config']
+        read_only_fields = fields
+
 class Vyos13RouterConfigSerializer(serializers.ModelSerializer):
     class Meta:
         model = basic_models.Vyos13RouterConfig

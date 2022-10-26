@@ -17,6 +17,7 @@
 Tasks for VyCinity
 '''
 
+import datetime
 import ipaddress
 import logging
 import subprocess
@@ -130,4 +131,19 @@ def deploy(deployment_id: int):
 
     deployment.state = basic_models.DEPLOYMENT_STATE_SUCCEED
     deployment.save()
-    
+
+@shared_task
+def retrieve_vyos13_live_router_config(lrc: basic_models.Vyos13LiveRouterConfig):
+    try:
+        router = lrc.router
+        configured_router = configurator.Vyos13Router(
+            'https://%s:443' % router.loopback,
+            router.token,
+            False)
+        currentRouterConfig = configured_router.getConfig()
+        lrc.config = currentRouterConfig.config
+        lrc.retrieved = datetime.datetime.now()
+        lrc.save()
+    except Exception as e:
+        logger.error('Failed to retrieve configuration from router %s', router.id, exc_info=e)
+        lrc.delete()
