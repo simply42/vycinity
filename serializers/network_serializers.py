@@ -15,6 +15,7 @@
 
 from rest_framework import serializers
 from vycinity.models.network_models import Network, ManagedInterface, ManagedVRRPInterface
+from vycinity.serializers.firewall_serializers import OwnedObjectRelatedField
 
 class NetworkSerializer(serializers.ModelSerializer):
     class Meta:
@@ -27,9 +28,11 @@ class ManagedInterfaceSerializer(serializers.ModelSerializer):
         model = ManagedInterface
         fields = ['id', 'router', 'ipv4_address', 'ipv6_address', 'network']
         read_only_fields = ['id']
+    network = OwnedObjectRelatedField(queryset=Network.objects.all(), required=True)
 
 class ManagedVRRPInterfaceSerializer(serializers.ModelSerializer):
     class Meta:
         model = ManagedVRRPInterface
         fields = ['id', 'router', 'ipv4_address', 'ipv6_address', 'network', 'ipv4_service_address', 'ipv6_service_address', 'priority', 'vrid']
         read_only_fields = ['id']
+    network = OwnedObjectRelatedField(queryset=Network.objects.all(), required=True)
