@@ -23,6 +23,7 @@ import logging
 import subprocess
 import traceback
 from time import sleep
+from uuid import UUID
 from celery import shared_task
 
 from vycinity.models import basic_models
@@ -133,17 +134,25 @@ def deploy(deployment_id: int):
     deployment.save()
 
 @shared_task
-def retrieve_vyos13_live_router_config(lrc: basic_models.Vyos13LiveRouterConfig):
+def retrieve_vyos13_live_router_config(lrc: UUID):
+    live_router_config = None
+    router = None
     try:
-        router = lrc.router
+        live_router_config = basic_models.Vyos13LiveRouterConfig.objects.get(pk=lrc)
+        router = live_router_config.router
+    except (basic_models.Vyos13LiveRouterConfig.DoesNotExist|basic_models.Vyos13Router.DoesNotExist|basic_models.Router.DoesNotExist) as e:
+        logger.error('Router config cannot be retrieved because a resource was not found in the database', exc_info=e)
+        return
+    
+    try:
         configured_router = configurator.Vyos13Router(
             'https://%s:443' % router.loopback,
             router.token,
             False)
         currentRouterConfig = configured_router.getConfig()
-        lrc.config = currentRouterConfig.config
-        lrc.retrieved = datetime.datetime.now()
-        lrc.save()
+        live_router_config.config = currentRouterConfig.config
+        live_router_config.retrieved = datetime.datetime.now(tz=datetime.timezone.utc)
+        live_router_config.save()
     except Exception as e:
         logger.error('Failed to retrieve configuration from router %s', router.id, exc_info=e)
-        lrc.delete()
+        live_router_config.delete()

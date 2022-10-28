@@ -34,6 +34,10 @@ class Vyos13LiveRouterConfigSerializer(serializers.ModelSerializer):
         fields = ['id', 'retrieved', 'config']
         read_only_fields = fields
 
+class Vyos13RouterConfigDiffSerializer(serializers.Serializer):
+    left = serializers.DictField(allow_empty=True)
+    right = serializers.DictField(allow_empty=True)
+
 class Vyos13RouterConfigSerializer(serializers.ModelSerializer):
     class Meta:
         model = basic_models.Vyos13RouterConfig
