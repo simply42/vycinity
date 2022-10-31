@@ -96,6 +96,28 @@ class Vyos13RouterDetailView(APIView):
         except Vyos13Router.DoesNotExist:
             raise Http404()
 
+class Vyos13RouterDeployView(APIView):
+    '''
+    Trigger a deployment of a single router. No data required in the body, an empty object is okay. The body will be ignored.
+    '''
+    schema = GenericSchema(serializer=DeploymentSerializer, tags=['router', 'vyos 1.3'], operation_id_base='Vyos13Router', component_name='Vyos13Router')
+    permission_classes = [IsRootCustomer]
+
+    def post(self, request, id, format=None):
+        try:
+            result = Vyos13Router.objects.get(pk=id)
+            deployment = Deployment.objects.create(change='triggered router', state=DEPLOYMENT_STATE_PREPARATION)
+            generated_config = Vyos13Adapter.generateConfig(result)
+            config = Vyos13RouterConfig.objects.create(router=result, config=generated_config.config)
+            deployment.configs.add(config)
+            deployment.state = DEPLOYMENT_STATE_READY
+            deployment.save()
+
+            deploy.delay(deployment.pk)
+            return Response(DeploymentSerializer(deployment).data, status=status.HTTP_202_ACCEPTED)
+        except (Vyos13Router.DoesNotExist):
+            raise Http404()
+
 class Vyos13RouterLiveConfigListView(APIView):
     '''
     Display and retrieval of live configuration from a vyos13 router
@@ -144,7 +166,7 @@ class Vyos13RouterLiveConfigDetailView(APIView):
 
 class Vyos13RouterConfigDiffDetailView(APIView):
     '''
-    Display of live configuration from a vyos13 router
+    Display of diff to live configuration from a vyos13 router. Left side of the diff is the part, which will be removed, right side ist the part that will be added, when deploying.
     '''
     schema = GenericSchema(serializer=Vyos13RouterConfigDiffSerializer, tags=['router', 'vyos 1.3'], operation_id_base='Vyos13LiveRouterConfig', component_name='Vyos13LiveRouterConfig')
     permission_classes = [IsRootCustomer]
@@ -157,8 +179,10 @@ class Vyos13RouterConfigDiffDetailView(APIView):
                 raise Vyos13LiveRouterConfig.DoesNotExist()
             
             generated_config = Vyos13Adapter.generateConfig(router)
+            if lrc.config is None:
+                return Response(data={'message': 'router config is not available yet'}, status=status.HTTP_400_BAD_REQUEST)
             retrieved_config = Vyos13ConfigEntities.Vyos13RouterConfig([], lrc.config)
-            serializer = Vyos13RouterConfigDiffSerializer(generated_config.diff(retrieved_config))
+            serializer = Vyos13RouterConfigDiffSerializer(retrieved_config.diff(generated_config))
             return Response(serializer.data)
         except (Vyos13Router.DoesNotExist, Vyos13LiveRouterConfig.DoesNotExist):
             raise Http404()

@@ -24,6 +24,7 @@ from .views import basic_views, customer_views, change_views
 urlpatterns = [
     path('routers/vyos13', basic_views.Vyos13RouterList.as_view()),
     path('routers/vyos13/<uuid:id>', basic_views.Vyos13RouterDetailView.as_view()),
+    path('routers/vyos13/<uuid:id>/deploy', basic_views.Vyos13RouterDeployView.as_view()),
     path('routers/vyos13/<uuid:router_id>/liveconfigs', basic_views.Vyos13RouterLiveConfigListView.as_view()),
     path('routers/vyos13/<uuid:router_id>/liveconfigs/<uuid:lrc_id>', basic_views.Vyos13RouterLiveConfigDetailView.as_view()),
     path('routers/vyos13/<uuid:router_id>/liveconfigs/<uuid:lrc_id>/diff', basic_views.Vyos13RouterConfigDiffDetailView.as_view()),
