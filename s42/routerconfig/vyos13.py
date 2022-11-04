@@ -54,7 +54,17 @@ class Vyos13RouterConfigDiff(RouterConfigDiff):
         if self.isEmpty():
             return rtn
         elif self.right is None:
-            rtn.append({'op': 'delete', 'path': self.context})
+            if self.left is not None:
+                if '__complete' in self.left or (len(self.left) == 0 and isinstance(self.left, dict)):
+                    rtn.append({'op':'delete', 'path':self.context})
+                elif isinstance(self.left, dict):
+                    for (leftkey, leftvalue) in self.left.items():
+                        rtn += Vyos13RouterConfigDiff(self.context + [leftkey], leftvalue, None).genApiCommands()
+                elif isinstance(self.left, list):
+                    for leftitem in self.left:
+                        rtn.append({'op': 'delete', 'path': self.context + [leftitem]})
+                else:
+                    rtn.append({'op': 'delete', 'path': self.context + [self.left]})
         elif self.left is None:
             if isinstance(self.right, dict):
                 sub_commands = []
@@ -333,7 +343,7 @@ class Vyos13Router(Router):
         if not self.isCompatibleToConfig(config) or not isinstance(config, Vyos13RouterConfig):
             raise RouterConfigError('Configuration is not compatible to this router')
         current_config = self.getConfig()
-        logging.debug('Current config of router: %s', str(current_config.config))
+        logger.debug('Current config of router: %s', str(current_config.config))
         current_sub_config = None
         try:
             current_sub_config = current_config.getSubConfig(config.getContext())
@@ -343,8 +353,9 @@ class Vyos13Router(Router):
         config_diff_to_apply = current_sub_config.diff(config)
         if not isinstance(config_diff_to_apply, Vyos13RouterConfigDiff) and not config_diff_to_apply.isEmpty():
             raise RouterConfigError('It was not possible to build a diff between active and wanted configuration, can\'t apply')
+        logger.debug('Diff: %s', config_diff_to_apply)
         commands = config_diff_to_apply.genApiCommands()
-        logging.debug('Commands to apply: %s', str(commands))
+        logger.debug('Commands to apply: %s', str(commands))
 
         try:
             response = requests.post(self.endpoint + '/configure', {'data': json.dumps(commands), 'key': self.api_key}, verify = self.verify)

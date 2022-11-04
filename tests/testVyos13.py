@@ -183,6 +183,12 @@ class TestVyos13RouterConfigDiff(unittest.TestCase):
         self.assertIn({'op': 'set', 'path': ['system', 'ntp', 'server', '2.pool.ntp.org']}, cmds)
         self.assertEqual(3, len(cmds))
 
+    def test_getApiCommands7(self):
+        diff = Vyos13RouterConfigDiff([], {'interfaces':{'ethernet':{'eth1':{'ip':{'ospf':{'bandwith':'1000'}, '__complete':True}}}}}, None)
+        cmds = diff.genApiCommands()
+        self.assertEqual(1, len(cmds))
+        self.assertIn({'op': 'delete', 'path': ['interfaces', 'ethernet', 'eth1', 'ip']}, cmds)
+
     def test_isEmpty1(self):
         config1 = Vyos13RouterConfig(['system'], {'ntp': ['1.2.3.4', '5.6.7.8']})
         config2 = Vyos13RouterConfig([], {'system': {'ntp': ['1.2.3.4', '5.6.7.8']}})
