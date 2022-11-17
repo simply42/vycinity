@@ -359,7 +359,13 @@ class Vyos13Router(Router):
 
         try:
             response = requests.post(self.endpoint + '/configure', {'data': json.dumps(commands), 'key': self.api_key}, verify = self.verify)
-            r = response.json()
+            r = None
+            try:
+                r = response.json()
+            except requests.exceptions.JSONDecodeError as jde:
+                message = 'Could not decode answer, assuming an error.'
+                logger.warning('requests.exceptions.JSONDecodeError occured on "%s"', response.content)
+                raise Exception(message)
             if not 'success' in r or not r['success'] or response.status_code < 200 or response.status_code >= 300:
                 message = 'Setting configuation failed with unknown reason, answer: %s' % (json.dumps(r))
                 if 'error' in r:
