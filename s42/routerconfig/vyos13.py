@@ -21,6 +21,21 @@ from . import Router, RouterConfig, RouterConfigDiff, RouterConfigError, RouterC
 
 logger = logging.getLogger(__name__)
 
+def _objectizeConf(obj: Union[list, str, dict]):
+        if isinstance(obj, str):
+            return { obj: {} }
+        if isinstance(obj, list):
+            rtn = {}
+            for current_item in obj:
+                for k, v in _objectizeConf(current_item).items():
+                    rtn[k] = v
+            return rtn
+        if isinstance(obj, dict):
+            rtn = {}
+            for current_key, current_value in obj.items():
+                rtn[current_key] = _objectizeConf(current_value) 
+            return rtn
+
 class Vyos13RouterConfigDiff(RouterConfigDiff):
     def __init__(self, context: List[str] = [], left = None, right = None):
         self.left = left
@@ -39,22 +54,7 @@ class Vyos13RouterConfigDiff(RouterConfigDiff):
         Vyos13RouterConfigDiff.displayString.__doc__ += RouterConfigDiff.displayString.__doc__
         raise NotImplementedError()
 
-    @staticmethod
-    def __objectizeConf(obj: Union[list, str, dict]):
-        if isinstance(obj, str):
-            return { obj: {} }
-        if isinstance(obj, list):
-            rtn = {}
-            for current_item in obj:
-                for k, v in Vyos13RouterConfigDiff.__objectizeConf(current_item).items():
-                    rtn[k] = v
-            return rtn
-        if isinstance(obj, dict):
-            rtn = {}
-            for current_key, current_value in obj.items():
-                rtn[current_key] = Vyos13RouterConfigDiff.__objectizeConf(current_value) 
-            return rtn
-    
+   
     def genApiCommands(self) -> List[Dict[str,Union[List[str],str]]]:
         '''
         Generates a list of get and set operations from this diff.
@@ -120,7 +120,7 @@ class Vyos13RouterConfigDiff(RouterConfigDiff):
                     rtn.append({'op': 'set', 'path': self.context, 'value': right_item})
         else:
             if type(self.left) != type(self.right):
-                rtn += Vyos13RouterConfigDiff(self.context, Vyos13RouterConfigDiff.__objectizeConf(self.left), Vyos13RouterConfigDiff.__objectizeConf(self.right)).genApiCommands()
+                rtn += Vyos13RouterConfigDiff(self.context, _objectizeConf(self.left), _objectizeConf(self.right)).genApiCommands()
             elif isinstance(self.left, str) and isinstance(self.right, str) and self.left != self.right:
                 rtn.append({'op': 'delete', 'path': self.context})
                 rtn.append({'op': 'set', 'path': self.context, 'value': str(self.right)})
@@ -292,15 +292,19 @@ class Vyos13RouterConfig(RouterConfig):
                 for (key, value) in other.config.items():
                     if key in rtn.config:
                         rtnvalue = rtn.config[key]
-                        if isinstance(value, dict) and isinstance(rtnvalue, dict):
-                            merged_config = Vyos13RouterConfig(rtn.context + [key], rtnvalue).merge(Vyos13RouterConfig(rtn.context + [key], value), False)
-                            rtn.config[key] = merged_config.config
-                        elif isinstance(value, list) and isinstance(rtnvalue, list):
-                            for valueitem in value:
-                                if not valueitem in rtnvalue:
-                                    rtn.config[key].append(valueitem)
+                        if type(value) == type(rtnvalue):
+                            if isinstance(value, dict):
+                                merged_config = Vyos13RouterConfig(rtn.context + [key], rtnvalue).merge(Vyos13RouterConfig(rtn.context + [key], value), False)
+                                rtn.config[key] = merged_config.config
+                            elif isinstance(value, list):
+                                for valueitem in value:
+                                    if not valueitem in rtnvalue:
+                                        rtn.config[key].append(valueitem)
+                            else:
+                                rtn.config[key] = value
                         else:
-                            rtn.config[key] = value
+                            merged_config = Vyos13RouterConfig(rtn.context + [key], _objectizeConf(rtnvalue)).merge(Vyos13RouterConfig(rtn.context + [key], _objectizeConf(value)), False)
+                            rtn.config[key] = merged_config.config
                     else:
                         rtn.config[key] = value
         else:

@@ -137,6 +137,13 @@ class TestVyos13RouterConfig(unittest.TestCase):
         self.assertEqual(config1.context, merged_config.context)
         self.assertEqual({'ntp':{'servers': ['0.de.pool.ntp.org']}, 'name-servers': ['9.9.9.9', '9.9.9.10']}, merged_config.config)
 
+    def test_merge6(self):
+        config1 = Vyos13RouterConfig(['system'], {'ntp':{'servers': ['ptbtime1.ptb.de', 'time1.google.com'], 'source-interface': 'eth0'}, 'name-servers': ['9.9.9.9', '9.9.9.10']})
+        config2 = Vyos13RouterConfig(['system'], {'ntp':{'servers': {'0.de.pool.ntp.org': {'disable': {}}}}})
+        merged_config = config1.merge(config2, False)
+        self.assertEqual(config1.context, merged_config.context)
+        self.assertEqual({'ntp':{'servers': {'ptbtime1.ptb.de': {}, 'time1.google.com': {}, '0.de.pool.ntp.org': {'disable':{}}}, "source-interface": "eth0"}, 'name-servers': ['9.9.9.9', '9.9.9.10']}, merged_config.config, f"got unexpected {json.dumps(merged_config.config)}")
+
 class TestVyos13RouterConfigDiff(unittest.TestCase):
     def test_getApiCommands1(self):
         config1 = Vyos13RouterConfig([], {'firewall':{'name':{'bla':{'default-action': 'accept'}}}, 'system':{'ntp':{'servers': ['ptbtime1.ptb.de', 'time1.google.com']}}})
