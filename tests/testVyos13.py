@@ -13,6 +13,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with VyCinity. If not, see <https://www.gnu.org/licenses/>.
 
+import json
 import unittest
 from vycinity.s42.routerconfig.vyos13 import Vyos13RouterConfig, Vyos13RouterConfigDiff
 
@@ -188,6 +189,224 @@ class TestVyos13RouterConfigDiff(unittest.TestCase):
         cmds = diff.genApiCommands()
         self.assertEqual(1, len(cmds))
         self.assertIn({'op': 'delete', 'path': ['interfaces', 'ethernet', 'eth1', 'ip']}, cmds)
+
+    def test_getApiCommands8(self):
+        '''
+        This configuration diff created commands that were unexpected and is taken from a real use
+        case.
+        '''
+        diff = Vyos13RouterConfigDiff([], 
+            {
+                "system": {
+                    "ntp": {
+                        "server": {
+                            "rz1-time.example.net": {},
+                            "rz2-time.example.net": {}
+                        }
+                    },
+                    "login": {
+                        "user": {
+                            "otheruser": {
+                                "authentication": {
+                                    "encrypted-password": "$6$9Smh65RxGTQyhXvo$redacted"
+                                }
+                            }
+                        }
+                    },
+                    "syslog": {
+                        "host": {
+                            "212.11.229.1": {
+                                "facility": {
+                                    "all": {
+                                        "level": "info",
+                                        "protocol": "udp"
+                                    },
+                                    "protocols": {
+                                        "level": "debug",
+                                        "protocol": "udp"
+                                    }
+                                }
+                            }
+                        },
+                        "global": {
+                            "facility": {
+                                "all": {
+                                    "level": "info"
+                                },
+                                "protocols": {
+                                    "level": "debug"
+                                }
+                            }
+                        }
+                    },
+                    "conntrack": {
+                        "modules": {
+                            "ftp": {},
+                            "nfs": {},
+                            "sip": {},
+                            "h323": {},
+                            "pptp": {},
+                            "tftp": {},
+                            "sqlnet": {}
+                        }
+                    },
+                    "host-name": "rz0-rt1",
+                    "config-management": {
+                        "commit-revisions": "100"
+                    }
+                },
+                "service": {
+                    "ssh": {},
+                    "https": {
+                        "api": {
+                            "keys": {
+                                "id": {
+                                    "routerdeployment": {
+                                    "key": "rd123456"
+                                    }
+                                }
+                            },
+                            "debug": {}
+                        },
+                        "api-restrict": {
+                            "virtual-host": "loopback-191"
+                        },
+                        "virtual-host": {
+                            "loopback-191": {
+                                "listen-port": "443",
+                                "server-name": "10.07.2.191",
+                                "listen-address": "10.1.2.191"
+                            }
+                        }
+                    }
+                },
+                "interfaces": {
+                    "ethernet": {
+                        "eth0": {
+                            "hw-id": "3c:a8:2a:a0:26:11",
+                            "address": "dhcp"
+                        },
+                        "eth1": {
+                            "hw-id": "3c:a8:2a:a0:26:22"
+                        },
+                        "eth2": {
+                            "hw-id": "f4:52:14:44:5d:33",
+                            "disable": {}
+                        }
+                    },
+                    "loopback": {
+                        "lo": {
+                            "address": "10.2.0.4/32"
+                        }
+                    }
+                }
+            },
+            {
+                "system": {
+                    "ntp": {
+                        "server": {
+                            "rz1-time.example.net": {},
+                            "rz2-time.example.net": {}
+                        }
+                    },
+                    "login": {
+                        "user": {
+                            "otheruser": {
+                                "authentication": {
+                                    "encrypted-password": "$6$9Smh65RxGTQyhXvo$redacted"
+                                }
+                            }
+                        }
+                    },
+                    "syslog": {
+                        "host": {
+                            "212.11.229.1": {
+                                "facility": {
+                                    "all": {
+                                        "level": "info",
+                                        "protocol": "udp"
+                                    },
+                                    "protocols": {
+                                        "level": "debug",
+                                        "protocol": "udp"
+                                    }
+                                }
+                            }
+                        },
+                        "global": {
+                            "facility": {
+                                "all": {
+                                    "level": "info"
+                                },
+                                "protocols": {
+                                    "level": "debug"
+                                }
+                            }
+                        }
+                    },
+                    "conntrack": {
+                        "modules": {
+                            "ftp": {},
+                            "nfs": {},
+                            "sip": {},
+                            "h323": {},
+                            "pptp": {},
+                            "tftp": {},
+                            "sqlnet": {}
+                        }
+                    },
+                    "host-name": "rz0-rt1",
+                    "config-management": {
+                        "commit-revisions": "100"
+                    }
+                },
+                "service": {
+                    "ssh": {},
+                    "https": {
+                        "api": {
+                            "debug": {}
+                        },
+                        "api-restrict": {
+                            "virtual-host": "loopback-191"
+                        },
+                        "virtual-host": {
+                            "loopback-191": {
+                            "listen-port": "443",
+                            "server-name": [
+                                "10.1.2.191"
+                            ],
+                            "listen-address": "10.1.2.191"
+                            }
+                        }
+                    }
+                },
+                "interfaces": {
+                    "ethernet": {
+                    "eth0": {
+                        "hw-id": "3c:a8:2a:a0:26:11",
+                        "address": "dhcp"
+                    },
+                    "eth1": {
+                        "hw-id": "3c:a8:2a:a0:26:22"
+                    },
+                    "eth2": {
+                        "hw-id": "f4:52:14:44:5d:33",
+                        "disable": {}
+                    }
+                    },
+                    "loopback": {
+                        "lo": {
+                            "address": "10.2.0.4/32"
+                        }
+                    }
+                }
+            })
+        cmds = diff.genApiCommands()
+        self.assertEqual(3, len(cmds), f"API-Commands are {json.dumps(cmds)} (count is different from 3)")
+        self.assertIn({'op': 'delete', 'path': ['service', 'https', 'virtual-host', 'loopback-191', 'server-name', '10.07.2.191']}, cmds)
+        self.assertIn({'op': 'set', 'path': ['service', 'https', 'virtual-host', 'loopback-191', 'server-name', '10.1.2.191']}, cmds)
+        self.assertIn({'op': 'delete', 'path': ['service', 'https', 'api', 'keys']}, cmds)
+        
 
     def test_isEmpty1(self):
         config1 = Vyos13RouterConfig(['system'], {'ntp': ['1.2.3.4', '5.6.7.8']})

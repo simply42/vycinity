@@ -39,6 +39,21 @@ class Vyos13RouterConfigDiff(RouterConfigDiff):
         Vyos13RouterConfigDiff.displayString.__doc__ += RouterConfigDiff.displayString.__doc__
         raise NotImplementedError()
 
+    @staticmethod
+    def __objectizeConf(obj: Union[list, str, dict]):
+        if isinstance(obj, str):
+            return { obj: {} }
+        if isinstance(obj, list):
+            rtn = {}
+            for current_item in obj:
+                for k, v in Vyos13RouterConfigDiff.__objectizeConf(current_item).items():
+                    rtn[k] = v
+            return rtn
+        if isinstance(obj, dict):
+            rtn = {}
+            for current_key, current_value in obj.items():
+                rtn[current_key] = Vyos13RouterConfigDiff.__objectizeConf(current_value) 
+            return rtn
     
     def genApiCommands(self) -> List[Dict[str,Union[List[str],str]]]:
         '''
@@ -104,8 +119,11 @@ class Vyos13RouterConfigDiff(RouterConfigDiff):
                 if not right_item in self.left:
                     rtn.append({'op': 'set', 'path': self.context, 'value': right_item})
         else:
-            rtn.append({'op': 'delete', 'path': self.context})
-            rtn.append({'op': 'set', 'path': self.context, 'value': str(self.right)})
+            if type(self.left) != type(self.right):
+                rtn += Vyos13RouterConfigDiff(self.context, Vyos13RouterConfigDiff.__objectizeConf(self.left), Vyos13RouterConfigDiff.__objectizeConf(self.right)).genApiCommands()
+            elif isinstance(self.left, str) and isinstance(self.right, str) and self.left != self.right:
+                rtn.append({'op': 'delete', 'path': self.context})
+                rtn.append({'op': 'set', 'path': self.context, 'value': str(self.right)})
 
         return rtn
 
