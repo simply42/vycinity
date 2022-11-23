@@ -23,6 +23,13 @@ class StaticConfigSection(PolymorphicModel):
     description = models.TextField(null=True)
     absolute = models.BooleanField()
 
+    def __lt__(self, other: 'StaticConfigSection'):
+        if other is None:
+            return NotImplemented
+        if isinstance(other.context, list) and isinstance(self.context, list):
+            return (len(self.context) < len(other.context))
+        return NotImplemented
+
 class Vyos13StaticConfigSection(StaticConfigSection):
     content = models.JSONField()
 

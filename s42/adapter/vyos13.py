@@ -361,7 +361,7 @@ def generateConfig(router: basic_models.Router) -> configurator.Vyos13RouterConf
             subif_config = configurator.Vyos13RouterConfig(router.managed_interface_context + ['vif', str(network.layer2_network_id)], subif_raw_config)
             planned_config = planned_config.merge(subif_config, False)
 
-
+    absolute_config_sections.sort()
     for config_section in absolute_config_sections:
         planned_config = planned_config.merge(
             configurator.Vyos13RouterConfig(config_section.context, config_section.content),
