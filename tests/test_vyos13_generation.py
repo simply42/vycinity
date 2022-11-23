@@ -67,6 +67,24 @@ class Vyos13GenerationSCSTest(TestCase):
         diff = Vyos13RouterConfig([], {'system':{'ntp':{'servers':{'3.3.3.3':{}}}, 'name-servers':['8.8.8.8','8.8.4.4']}}).diff(config)
         self.assertTrue(diff.isEmpty(), 'Diff is not empty: ' + str(diff))
 
+    def test_generateConfigMultiSCSAbsoluteSpecificThenGeneral(self):
+        '''
+        The error tested here depends on the internal retrieval of the config section. So it does not fail stable. A sort should fix it.
+        '''
+        router = basic_models.Vyos13Router(name="A", loopback='127.0.1.1', deploy=False, token='1234', fingerprint='5678', managed_interface_context=[])
+        router.save()
+        scs1 = basic_models.Vyos13StaticConfigSection(description='base', absolute=True, context=['service', 'https'], content={'api':{'debug':{}}})
+        scs1.save()
+        scs2 = basic_models.Vyos13StaticConfigSection(description='specific', absolute=True, context=['service','https','api','keys','id','test'], content={'key':'mykey'})
+        scs2.save()
+        router.active_static_configs.add(scs1)
+        router.active_static_configs.add(scs2)
+        router.save()
+
+        config = generateConfig(router)
+        diff = Vyos13RouterConfig([], {'service':{'https':{'api':{'debug':{},'keys':{'id':{'test':{'key':'mykey'}}}}}}}).diff(config)
+        self.assertTrue(diff.isEmpty(), 'Diff is not empty: ' + str(diff))
+
 
 class Vyos13GenerationNetworkTest(TestCase):
     def test_generateConfigWithManagedNetwork(self):
