@@ -317,6 +317,9 @@ class Vyos13RouterConfig(RouterConfig):
                 
         return rtn
 
+    def __str__(self):
+        return 'Vyos13RouterConfig(context='+ str(self.context) +', config='+ str(self.config) +')'
+
 
 class Vyos13Router(Router):
     '''
