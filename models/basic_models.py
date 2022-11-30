@@ -15,6 +15,7 @@
 
 import uuid
 from django.db import models
+from django.forms import ValidationError
 from polymorphic.models import PolymorphicModel
 
 class StaticConfigSection(PolymorphicModel):
@@ -31,7 +32,12 @@ class StaticConfigSection(PolymorphicModel):
         return NotImplemented
 
 class Vyos13StaticConfigSection(StaticConfigSection):
-    content = models.JSONField()
+    @staticmethod
+    def validate_is_object(value):
+        if type(value) != dict:
+            raise ValidationError('Value is not an object/dict')
+
+    content = models.JSONField(validators=[validate_is_object])
 
 class Router(PolymorphicModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
