@@ -18,12 +18,14 @@ from rest_framework import permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
-from vycinity.models.basic_models import Router, Vyos13Router, Vyos13StaticConfigSection, Vyos13RouterConfig, Deployment, DEPLOYMENT_STATE_PREPARATION, DEPLOYMENT_STATE_READY
+from vycinity.models.basic_models import Router, Vyos13LiveRouterConfig, Vyos13Router, Vyos13StaticConfigSection, Vyos13RouterConfig, Deployment, DEPLOYMENT_STATE_PREPARATION, DEPLOYMENT_STATE_READY
 from vycinity.permissions import IsRootCustomer
 from vycinity.s42.adapter import vyos13 as Vyos13Adapter
-from vycinity.serializers.basic_serializers import Vyos13RouterSerializer, Vyos13StaticConfigSectionSerializer, Vyos13RouterConfigSerializer, DeploymentSerializer
-from vycinity.tasks import deploy
+from vycinity.s42.routerconfig import vyos13 as Vyos13ConfigEntities
+from vycinity.serializers.basic_serializers import Vyos13LiveRouterConfigSerializer, Vyos13RouterSerializer, Vyos13StaticConfigSectionSerializer, Vyos13RouterConfigSerializer, DeploymentSerializer, Vyos13RouterConfigDiffSerializer
+from vycinity.tasks import deploy, retrieve_vyos13_live_router_config
 from vycinity.views import GenericSchema
+
 
 class Vyos13RouterList(APIView):
     '''
@@ -92,6 +94,97 @@ class Vyos13RouterDetailView(APIView):
             result.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
         except Vyos13Router.DoesNotExist:
+            raise Http404()
+
+class Vyos13RouterDeployView(APIView):
+    '''
+    Trigger a deployment of a single router. No data required in the body, an empty object is okay. The body will be ignored.
+    '''
+    schema = GenericSchema(serializer=DeploymentSerializer, tags=['router', 'vyos 1.3'], operation_id_base='Vyos13Router', component_name='Vyos13Router')
+    permission_classes = [IsRootCustomer]
+
+    def post(self, request, id, format=None):
+        try:
+            result = Vyos13Router.objects.get(pk=id)
+            deployment = Deployment.objects.create(change='triggered router', state=DEPLOYMENT_STATE_PREPARATION)
+            generated_config = Vyos13Adapter.generateConfig(result)
+            config = Vyos13RouterConfig.objects.create(router=result, config=generated_config.config)
+            deployment.configs.add(config)
+            deployment.state = DEPLOYMENT_STATE_READY
+            deployment.save()
+
+            deploy.delay(deployment.pk)
+            return Response(DeploymentSerializer(deployment).data, status=status.HTTP_202_ACCEPTED)
+        except (Vyos13Router.DoesNotExist):
+            raise Http404()
+
+class Vyos13RouterLiveConfigListView(APIView):
+    '''
+    Display and retrieval of live configuration from a vyos13 router
+    '''
+    schema = GenericSchema(serializer=Vyos13LiveRouterConfigSerializer, tags=['router', 'vyos 1.3'], operation_id_base='Vyos13LiveRouterConfig', component_name='Vyos13LiveRouterConfig')
+    permission_classes = [IsRootCustomer]
+
+    def get(self, request, router_id, format=None):
+        try:
+            router = Vyos13Router.objects.get(pk=router_id)
+            configs = Vyos13LiveRouterConfig.objects.filter(router=router).order_by('-retrieved').all()
+            serializer = Vyos13LiveRouterConfigSerializer(configs, many=True)
+            return Response(serializer.data)
+        except (Vyos13Router.DoesNotExist):
+            raise Http404()
+    
+    def post(self, request, router_id, format=None):
+        try:
+            router = Vyos13Router.objects.get(pk=router_id)
+            newLrc: Vyos13LiveRouterConfig = Vyos13LiveRouterConfig.objects.create(router=router)
+            serializer = Vyos13LiveRouterConfigSerializer(newLrc)
+
+            retrieve_vyos13_live_router_config.delay(newLrc.id)
+            
+            return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
+        except (Vyos13Router.DoesNotExist):
+            raise Http404()
+
+class Vyos13RouterLiveConfigDetailView(APIView):
+    '''
+    Display of live configuration from a vyos13 router
+    '''
+    schema = GenericSchema(serializer=Vyos13LiveRouterConfigSerializer, tags=['router', 'vyos 1.3'], operation_id_base='Vyos13LiveRouterConfig', component_name='Vyos13LiveRouterConfig')
+    permission_classes = [IsRootCustomer]
+
+    def get(self, request, router_id, lrc_id, format=None):
+        try:
+            router = Vyos13Router.objects.get(pk=router_id)
+            lrc = Vyos13LiveRouterConfig.objects.get(pk=lrc_id)
+            if (lrc.router != router):
+                raise Vyos13LiveRouterConfig.DoesNotExist()
+            serializer = Vyos13LiveRouterConfigSerializer(lrc)
+            return Response(data=serializer.data)
+        except (Vyos13Router.DoesNotExist, Vyos13LiveRouterConfig.DoesNotExist):
+            raise Http404()
+
+class Vyos13RouterConfigDiffDetailView(APIView):
+    '''
+    Display of diff to live configuration from a vyos13 router. Left side of the diff is the part, which will be removed, right side ist the part that will be added, when deploying.
+    '''
+    schema = GenericSchema(serializer=Vyos13RouterConfigDiffSerializer, tags=['router', 'vyos 1.3'], operation_id_base='Vyos13LiveRouterConfig', component_name='Vyos13LiveRouterConfig')
+    permission_classes = [IsRootCustomer]
+
+    def get(self, request, router_id, lrc_id, format=None):
+        try:
+            router = Vyos13Router.objects.get(pk=router_id)
+            lrc = Vyos13LiveRouterConfig.objects.get(pk=lrc_id)
+            if (lrc.router != router):
+                raise Vyos13LiveRouterConfig.DoesNotExist()
+            
+            generated_config = Vyos13Adapter.generateConfig(router)
+            if lrc.config is None:
+                return Response(data={'message': 'router config is not available yet'}, status=status.HTTP_400_BAD_REQUEST)
+            retrieved_config = Vyos13ConfigEntities.Vyos13RouterConfig([], lrc.config)
+            serializer = Vyos13RouterConfigDiffSerializer(retrieved_config.diff(generated_config))
+            return Response(serializer.data)
+        except (Vyos13Router.DoesNotExist, Vyos13LiveRouterConfig.DoesNotExist):
             raise Http404()
 
 class Vyos13StaticConfigSectionList(APIView):

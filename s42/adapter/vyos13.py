@@ -257,9 +257,9 @@ def generateConfig(router: basic_models.Router) -> configurator.Vyos13RouterConf
     absolute_config_sections = []
     for config_section in router.vyos13router.active_static_configs.all():
         if not config_section.absolute:
-            planned_config = planned_config.merge(
-                configurator.Vyos13RouterConfig(config_section.context, config_section.content),
-                False)
+            additional_config = configurator.Vyos13RouterConfig(config_section.context, config_section.content)
+            logging.debug('Merging non-absolute Config with tree: %s + %s', planned_config, additional_config)
+            planned_config = planned_config.merge(additional_config, False)
         else:
             absolute_config_sections.append(config_section)
 
@@ -361,7 +361,7 @@ def generateConfig(router: basic_models.Router) -> configurator.Vyos13RouterConf
             subif_config = configurator.Vyos13RouterConfig(router.managed_interface_context + ['vif', str(network.layer2_network_id)], subif_raw_config)
             planned_config = planned_config.merge(subif_config, False)
 
-
+    absolute_config_sections.sort()
     for config_section in absolute_config_sections:
         planned_config = planned_config.merge(
             configurator.Vyos13RouterConfig(config_section.context, config_section.content),

@@ -17,11 +17,13 @@
 Tasks for VyCinity
 '''
 
+import datetime
 import ipaddress
 import logging
 import subprocess
 import traceback
 from time import sleep
+from uuid import UUID
 from celery import shared_task
 
 from vycinity.models import basic_models
@@ -130,4 +132,27 @@ def deploy(deployment_id: int):
 
     deployment.state = basic_models.DEPLOYMENT_STATE_SUCCEED
     deployment.save()
+
+@shared_task
+def retrieve_vyos13_live_router_config(lrc: UUID):
+    live_router_config = None
+    router = None
+    try:
+        live_router_config = basic_models.Vyos13LiveRouterConfig.objects.get(pk=lrc)
+        router = live_router_config.router
+    except (basic_models.Vyos13LiveRouterConfig.DoesNotExist|basic_models.Vyos13Router.DoesNotExist|basic_models.Router.DoesNotExist) as e:
+        logger.error('Router config cannot be retrieved because a resource was not found in the database', exc_info=e)
+        return
     
+    try:
+        configured_router = configurator.Vyos13Router(
+            'https://%s:443' % router.loopback,
+            router.token,
+            False)
+        currentRouterConfig = configured_router.getConfig()
+        live_router_config.config = currentRouterConfig.config
+        live_router_config.retrieved = datetime.datetime.now(tz=datetime.timezone.utc)
+        live_router_config.save()
+    except Exception as e:
+        logger.error('Failed to retrieve configuration from router %s', router.id, exc_info=e)
+        live_router_config.delete()

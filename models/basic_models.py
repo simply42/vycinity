@@ -15,6 +15,7 @@
 
 import uuid
 from django.db import models
+from django.forms import ValidationError
 from polymorphic.models import PolymorphicModel
 
 class StaticConfigSection(PolymorphicModel):
@@ -23,8 +24,20 @@ class StaticConfigSection(PolymorphicModel):
     description = models.TextField(null=True)
     absolute = models.BooleanField()
 
+    def __lt__(self, other: 'StaticConfigSection'):
+        if other is None:
+            return NotImplemented
+        if isinstance(other.context, list) and isinstance(self.context, list):
+            return (len(self.context) < len(other.context))
+        return NotImplemented
+
 class Vyos13StaticConfigSection(StaticConfigSection):
-    content = models.JSONField()
+    @staticmethod
+    def validate_is_object(value):
+        if type(value) != dict:
+            raise ValidationError('Value is not an object/dict')
+
+    content = models.JSONField(validators=[validate_is_object])
 
 class Router(PolymorphicModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -37,6 +50,14 @@ class Vyos13Router(Router):
     token = models.CharField(max_length=256, blank=False)
     fingerprint = models.CharField(max_length=256, blank=False)
     active_static_configs = models.ManyToManyField(Vyos13StaticConfigSection, blank=True)
+
+class LiveRouterConfig(PolymorphicModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    retrieved = models.DateTimeField(null=True)
+    router = models.ForeignKey(Router, on_delete=models.CASCADE, null=False)
+
+class Vyos13LiveRouterConfig(LiveRouterConfig):
+    config = models.JSONField(null=True)
 
 class RouterConfig(PolymorphicModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

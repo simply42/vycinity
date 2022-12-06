@@ -21,6 +21,21 @@ from . import Router, RouterConfig, RouterConfigDiff, RouterConfigError, RouterC
 
 logger = logging.getLogger(__name__)
 
+def _objectizeConf(obj: Union[list, str, dict]):
+        if isinstance(obj, str):
+            return { obj: {} }
+        if isinstance(obj, list):
+            rtn = {}
+            for current_item in obj:
+                for k, v in _objectizeConf(current_item).items():
+                    rtn[k] = v
+            return rtn
+        if isinstance(obj, dict):
+            rtn = {}
+            for current_key, current_value in obj.items():
+                rtn[current_key] = _objectizeConf(current_value) 
+            return rtn
+
 class Vyos13RouterConfigDiff(RouterConfigDiff):
     def __init__(self, context: List[str] = [], left = None, right = None):
         self.left = left
@@ -39,7 +54,7 @@ class Vyos13RouterConfigDiff(RouterConfigDiff):
         Vyos13RouterConfigDiff.displayString.__doc__ += RouterConfigDiff.displayString.__doc__
         raise NotImplementedError()
 
-    
+   
     def genApiCommands(self) -> List[Dict[str,Union[List[str],str]]]:
         '''
         Generates a list of get and set operations from this diff.
@@ -54,7 +69,17 @@ class Vyos13RouterConfigDiff(RouterConfigDiff):
         if self.isEmpty():
             return rtn
         elif self.right is None:
-            rtn.append({'op': 'delete', 'path': self.context})
+            if self.left is not None:
+                if '__complete' in self.left or (len(self.left) == 0 and isinstance(self.left, dict)):
+                    rtn.append({'op':'delete', 'path':self.context})
+                elif isinstance(self.left, dict):
+                    for (leftkey, leftvalue) in self.left.items():
+                        rtn += Vyos13RouterConfigDiff(self.context + [leftkey], leftvalue, None).genApiCommands()
+                elif isinstance(self.left, list):
+                    for leftitem in self.left:
+                        rtn.append({'op': 'delete', 'path': self.context + [leftitem]})
+                else:
+                    rtn.append({'op': 'delete', 'path': self.context + [self.left]})
         elif self.left is None:
             if isinstance(self.right, dict):
                 sub_commands = []
@@ -94,8 +119,11 @@ class Vyos13RouterConfigDiff(RouterConfigDiff):
                 if not right_item in self.left:
                     rtn.append({'op': 'set', 'path': self.context, 'value': right_item})
         else:
-            rtn.append({'op': 'delete', 'path': self.context})
-            rtn.append({'op': 'set', 'path': self.context, 'value': str(self.right)})
+            if type(self.left) != type(self.right):
+                rtn += Vyos13RouterConfigDiff(self.context, _objectizeConf(self.left), _objectizeConf(self.right)).genApiCommands()
+            elif isinstance(self.left, str) and isinstance(self.right, str) and self.left != self.right:
+                rtn.append({'op': 'delete', 'path': self.context})
+                rtn.append({'op': 'set', 'path': self.context, 'value': str(self.right)})
 
         return rtn
 
@@ -264,15 +292,19 @@ class Vyos13RouterConfig(RouterConfig):
                 for (key, value) in other.config.items():
                     if key in rtn.config:
                         rtnvalue = rtn.config[key]
-                        if isinstance(value, dict) and isinstance(rtnvalue, dict):
-                            merged_config = Vyos13RouterConfig(rtn.context + [key], rtnvalue).merge(Vyos13RouterConfig(rtn.context + [key], value), False)
-                            rtn.config[key] = merged_config.config
-                        elif isinstance(value, list) and isinstance(rtnvalue, list):
-                            for valueitem in value:
-                                if not valueitem in rtnvalue:
-                                    rtn.config[key].append(valueitem)
+                        if type(value) == type(rtnvalue):
+                            if isinstance(value, dict):
+                                merged_config = Vyos13RouterConfig(rtn.context + [key], rtnvalue).merge(Vyos13RouterConfig(rtn.context + [key], value), False)
+                                rtn.config[key] = merged_config.config
+                            elif isinstance(value, list):
+                                for valueitem in value:
+                                    if not valueitem in rtnvalue:
+                                        rtn.config[key].append(valueitem)
+                            else:
+                                rtn.config[key] = value
                         else:
-                            rtn.config[key] = value
+                            merged_config = Vyos13RouterConfig(rtn.context + [key], _objectizeConf(rtnvalue)).merge(Vyos13RouterConfig(rtn.context + [key], _objectizeConf(value)), False)
+                            rtn.config[key] = merged_config.config
                     else:
                         rtn.config[key] = value
         else:
@@ -284,6 +316,9 @@ class Vyos13RouterConfig(RouterConfig):
             rtn.config[next_context_hop] = merged_config.config
                 
         return rtn
+
+    def __str__(self):
+        return 'Vyos13RouterConfig(context='+ str(self.context) +', config='+ str(self.config) +')'
 
 
 class Vyos13Router(Router):
@@ -333,7 +368,7 @@ class Vyos13Router(Router):
         if not self.isCompatibleToConfig(config) or not isinstance(config, Vyos13RouterConfig):
             raise RouterConfigError('Configuration is not compatible to this router')
         current_config = self.getConfig()
-        logging.debug('Current config of router: %s', str(current_config.config))
+        logger.debug('Current config of router: %s', str(current_config.config))
         current_sub_config = None
         try:
             current_sub_config = current_config.getSubConfig(config.getContext())
@@ -343,15 +378,22 @@ class Vyos13Router(Router):
         config_diff_to_apply = current_sub_config.diff(config)
         if not isinstance(config_diff_to_apply, Vyos13RouterConfigDiff) and not config_diff_to_apply.isEmpty():
             raise RouterConfigError('It was not possible to build a diff between active and wanted configuration, can\'t apply')
+        logger.debug('Diff: %s', config_diff_to_apply)
         commands = config_diff_to_apply.genApiCommands()
-        logging.debug('Commands to apply: %s', str(commands))
+        logger.debug('Commands to apply: %s', str(commands))
 
         try:
             response = requests.post(self.endpoint + '/configure', {'data': json.dumps(commands), 'key': self.api_key}, verify = self.verify)
-            r = response.json()
+            r = None
+            try:
+                r = response.json()
+            except requests.exceptions.JSONDecodeError as jde:
+                message = 'Could not decode answer, assuming an error.'
+                logger.warning('requests.exceptions.JSONDecodeError occured on "%s"', response.content)
+                raise Exception(message)
             if not 'success' in r or not r['success'] or response.status_code < 200 or response.status_code >= 300:
                 message = 'Setting configuation failed with unknown reason, answer: %s' % (json.dumps(r))
-                if 'error' in r:
+                if 'error' in r and len(r['error']) > 0:
                     message = 'Router failed while setting configuration with error: %s' % (r['error'])
                 raise Exception(message)
         except Exception as e:
