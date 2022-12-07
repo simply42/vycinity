@@ -15,7 +15,7 @@
 
 from django.http import Http404
 from rest_framework import permissions
-from rest_framework.generics import ListCreateAPIView
+from rest_framework.generics import ListCreateAPIView, ListAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
@@ -126,7 +126,6 @@ class Vyos13RouterLiveConfigListView(ListCreateAPIView):
     schema = GenericSchema(serializer=Vyos13LiveRouterConfigSerializer, tags=['router', 'vyos 1.3'], operation_id_base='Vyos13LiveRouterConfig', component_name='Vyos13LiveRouterConfig')
     permission_classes = [IsRootCustomer]
     serializer_class = Vyos13LiveRouterConfigSerializer
-    page_size_query_param = 'page_size'
 
     def get_queryset(self):
         router_id = self.kwargs['router_id']
@@ -192,23 +191,14 @@ class Vyos13RouterConfigDiffDetailView(APIView):
         except (Vyos13Router.DoesNotExist, Vyos13LiveRouterConfig.DoesNotExist):
             raise Http404()
 
-class Vyos13StaticConfigSectionList(APIView):
+class Vyos13StaticConfigSectionList(ListCreateAPIView):
     '''
     Management of static configuration sections for VyOS 1.3
     '''
     schema = GenericSchema(serializer=Vyos13StaticConfigSectionSerializer, tags=['static config section', 'vyos 1.3'], operation_id_base='Vyos13StaticConfigSection', component_name='Vyos13StaticConfigSection')
     permission_classes = [IsRootCustomer]
-
-    def get(self, request, format=None):
-        all_static_configs = Vyos13StaticConfigSection.objects.all()
-        return Response(Vyos13StaticConfigSectionSerializer(all_static_configs, many=True).data)
-
-    def post(self, request, format=None):
-        serializer = Vyos13StaticConfigSectionSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    serializer_class = Vyos13StaticConfigSectionSerializer
+    queryset = Vyos13StaticConfigSection.objects.all()
 
 
 class Vyos13StaticConfigSectionDetail(APIView):
@@ -260,28 +250,24 @@ class Vyos13StaticConfigSectionDetail(APIView):
             raise Http404()
 
 
-class DeploymentList(APIView):
+class DeploymentList(ListAPIView):
     '''
     get:
         Retrieve information about triggered deployments to routers.
     '''
     schema = GenericSchema(serializer=DeploymentSerializer, tags=['deployment'], operation_id_base='Deployment', component_name='Deployment')
     permission_classes = [IsRootCustomer]
-
-    def get(self, request, format=None):
-        all_deployments = Deployment.objects.all()
-        return Response(DeploymentSerializer(all_deployments, many=True).data)
+    queryset = Deployment.objects.all()
+    serializer_class = DeploymentSerializer
 
 
-class Vyos13RouterConfigList(APIView):
+class Vyos13RouterConfigList(ListAPIView):
     '''
     get:
         The list for configuration for VyOS 1.3 routers
     '''
     schema = GenericSchema(serializer=Vyos13RouterConfigSerializer, tags=['router', 'vyos 1.3', 'configuration'], operation_id_base='Vyos13RouterConfig', component_name='Vyos13RouterConfig')
     permission_classes = [IsRootCustomer]
-
-    def get(self, request, format=None):
-        all_configs = Vyos13RouterConfig.objects.all()
-        return Response(Vyos13RouterConfigSerializer(all_configs, many=True).data)
+    queryset = Vyos13RouterConfig.objects.all()
+    serializer_class = Vyos13LiveRouterConfigSerializer
 
