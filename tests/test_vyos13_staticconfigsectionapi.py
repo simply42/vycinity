@@ -30,12 +30,12 @@ class Vyos13StaticConfigSectionAPITest(TestCase):
         response = c.get('/api/v1/scs/vyos13', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.root_authorization)
         self.assertEqual(200, response.status_code)
         content = response.json()
-        self.assertEqual(1, len(content))
-        self.assertEqual(content[0]['id'], str(self.test_static_config_section.id))
-        self.assertEqual(content[0]['description'], self.test_static_config_section.description)
-        self.assertTrue(content[0]['absolute'])
-        self.assertDictEqual(content[0]['content'], { 'server': {'time1.example.com':{}}})
-        self.assertListEqual(content[0]['context'], ['system', 'ntp'])
+        self.assertEqual(1, len(content['results']))
+        self.assertEqual(content['results'][0]['id'], str(self.test_static_config_section.id))
+        self.assertEqual(content['results'][0]['description'], self.test_static_config_section.description)
+        self.assertTrue(content['results'][0]['absolute'])
+        self.assertDictEqual(content['results'][0]['content'], { 'server': {'time1.example.com':{}}})
+        self.assertListEqual(content['results'][0]['context'], ['system', 'ntp'])
 
     def test_list_staticconfigsections_non_root_customer(self):
         c = Client()

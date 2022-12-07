@@ -15,6 +15,7 @@
 
 from django.http import Http404
 from rest_framework import permissions
+from rest_framework.generics import ListCreateAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
@@ -118,31 +119,35 @@ class Vyos13RouterDeployView(APIView):
         except (Vyos13Router.DoesNotExist):
             raise Http404()
 
-class Vyos13RouterLiveConfigListView(APIView):
+class Vyos13RouterLiveConfigListView(ListCreateAPIView):
     '''
-    Display and retrieval of live configuration from a vyos13 router
+    Display and retrieval of live configuration from a vyos13 router. Retrieval is paginated.
     '''
     schema = GenericSchema(serializer=Vyos13LiveRouterConfigSerializer, tags=['router', 'vyos 1.3'], operation_id_base='Vyos13LiveRouterConfig', component_name='Vyos13LiveRouterConfig')
     permission_classes = [IsRootCustomer]
+    serializer_class = Vyos13LiveRouterConfigSerializer
+    page_size_query_param = 'page_size'
 
-    def get(self, request, router_id, format=None):
+    def get_queryset(self):
+        router_id = self.kwargs['router_id']
         try:
             router = Vyos13Router.objects.get(pk=router_id)
-            configs = Vyos13LiveRouterConfig.objects.filter(router=router).order_by('-retrieved').all()
-            serializer = Vyos13LiveRouterConfigSerializer(configs, many=True)
-            return Response(serializer.data)
+            configs = Vyos13LiveRouterConfig.objects.filter(router=router).order_by('-retrieved')
+            return configs
         except (Vyos13Router.DoesNotExist):
             raise Http404()
     
-    def post(self, request, router_id, format=None):
+    def create(self, request, *args, **kwargs):
+        router_id = kwargs['router_id']
         try:
             router = Vyos13Router.objects.get(pk=router_id)
             newLrc: Vyos13LiveRouterConfig = Vyos13LiveRouterConfig.objects.create(router=router)
-            serializer = Vyos13LiveRouterConfigSerializer(newLrc)
+            serializer = self.get_serializer_class()(newLrc)
 
             retrieve_vyos13_live_router_config.delay(newLrc.id)
             
-            return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
+            headers = self.get_success_headers(serializer.data)
+            return Response(serializer.data, status=status.HTTP_202_ACCEPTED, headers=headers)
         except (Vyos13Router.DoesNotExist):
             raise Http404()
 
