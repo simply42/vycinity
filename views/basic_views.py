@@ -15,7 +15,7 @@
 
 from django.http import Http404
 from rest_framework import permissions
-from rest_framework.generics import ListCreateAPIView, ListAPIView
+from rest_framework.generics import ListCreateAPIView, ListAPIView, RetrieveAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
@@ -260,6 +260,17 @@ class DeploymentList(ListAPIView):
     queryset = Deployment.objects.all()
     serializer_class = DeploymentSerializer
 
+class DeploymentDetail(RetrieveAPIView):
+    '''
+    get:
+        Retrieve information about triggered deployments to routers.
+    '''
+    schema = GenericSchema(serializer=DeploymentSerializer, tags=['deployment'], operation_id_base='Deployment', component_name='Deployment')
+    permission_classes = [IsRootCustomer]
+    lookup_field = 'id'
+    queryset = Deployment.objects.all()
+    serializer_class = DeploymentSerializer
+
 
 class Vyos13RouterConfigList(ListAPIView):
     '''
@@ -269,5 +280,16 @@ class Vyos13RouterConfigList(ListAPIView):
     schema = GenericSchema(serializer=Vyos13RouterConfigSerializer, tags=['router', 'vyos 1.3', 'configuration'], operation_id_base='Vyos13RouterConfig', component_name='Vyos13RouterConfig')
     permission_classes = [IsRootCustomer]
     queryset = Vyos13RouterConfig.objects.all()
-    serializer_class = Vyos13LiveRouterConfigSerializer
+    serializer_class = Vyos13RouterConfigSerializer
+
+class Vyos13RouterConfigDetail(RetrieveAPIView):
+    '''
+    get:
+        A specific configuration for a VyOS 1.3 router
+    '''
+    schema = GenericSchema(serializer=Vyos13RouterConfigSerializer, tags=['router', 'vyos 1.3', 'configuration'], operation_id_base='Vyos13RouterConfig', component_name='Vyos13RouterConfig')
+    permission_classes = [IsRootCustomer]
+    lookup_field = 'id'
+    queryset = Vyos13RouterConfig.objects.all()
+    serializer_class = Vyos13RouterConfigSerializer
 
