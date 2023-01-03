@@ -90,7 +90,7 @@ class FirewallDetailView(GenericOwnedObjectDetail):
     def get_model(self):
         return models.Firewall
 
-    def get_serializer(self):
+    def get_serializer_class(self):
         return serializers.FirewallSerializer
 
     def filter_attributes(self, object: Any, customer: customer_models.Customer):
@@ -181,7 +181,7 @@ class RuleSetDetailView(GenericOwnedObjectDetail):
     def get_model(self):
         return models.RuleSet
 
-    def get_serializer(self):
+    def get_serializer_class(self):
         return serializers.RuleSetSerializer
 
     def filter_attributes(self, object: Any, customer: customer_models.Customer):
@@ -275,7 +275,7 @@ class BasicRuleDetail(GenericOwnedObjectDetail):
     def get_model(self):
         return models.BasicRule
 
-    def get_serializer(self):
+    def get_serializer_class(self):
         return serializers.BasicRuleSerializer
 
     def put_validate(self, object: Any, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
@@ -302,7 +302,7 @@ class CustomRuleList(GenericOwnedObjectList):
     def get_model(self):
         return models.CustomRule
 
-    def get_serializer(self):
+    def get_serializer_class(self):
         return serializers.CustomRuleSerializer
 
     def post_validate(self, object: Any, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> bool:
@@ -336,7 +336,7 @@ class CustomRuleDetail(GenericOwnedObjectDetail):
     def get_model(self):
         return models.CustomRule
 
-    def get_serializer(self):
+    def get_serializer_class(self):
         return serializers.CustomRuleSerializer
 
     def put_validate(self, object: Any, customer: customer_models.Customer, changeset: change_models.ChangeSet):
@@ -402,7 +402,7 @@ class NetworkAddressObjectDetail(GenericOwnedObjectDetail):
     def get_model(self):
         return models.NetworkAddressObject
 
-    def get_serializer(self):
+    def get_serializer_class(self):
         return serializers.NetworkAddressObjectSerializer
 
     def put_validate(self, object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
@@ -453,7 +453,7 @@ class CIDRAddressObjectDetail(GenericOwnedObjectDetail):
     def get_model(self):
         return models.CIDRAddressObject
 
-    def get_serializer(self):
+    def get_serializer_class(self):
         return serializers.CIDRAddressObjectSerializer
 
     def put_validate(self, object: Any, customer: customer_models.Customer, changeset: change_models.ChangeSet):
@@ -504,7 +504,7 @@ class HostAddressObjectDetail(GenericOwnedObjectDetail):
     def get_model(self):
         return models.HostAddressObject
 
-    def get_serializer(self):
+    def get_serializer_class(self):
         return serializers.HostAddressObjectSerializer
 
     def put_validate(self, object: Any, customer: customer_models.Customer, changeset: change_models.ChangeSet):
@@ -583,7 +583,7 @@ class ListAddressObjectDetail(GenericOwnedObjectDetail):
     def get_model(self):
         return models.ListAddressObject
 
-    def get_serializer(self):
+    def get_serializer_class(self):
         return serializers.ListAddressObjectSerializer
 
     def put_validate(self, object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
@@ -634,7 +634,7 @@ class SimpleServiceObjectDetail(GenericOwnedObjectDetail):
     def get_model(self):
         return models.SimpleServiceObject
     
-    def get_serializer(self):
+    def get_serializer_class(self):
         return serializers.SimpleServiceObjectSerializer
 
     def put_validate(self, object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
@@ -685,7 +685,7 @@ class RangeServiceObjectDetail(GenericOwnedObjectDetail):
     def get_model(self):
         return models.RangeServiceObject
     
-    def get_serializer(self):
+    def get_serializer_class(self):
         return serializers.RangeServiceObjectSerializer
 
     def put_validate(self, object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
@@ -739,7 +739,7 @@ class ListServiceObjectDetail(GenericOwnedObjectDetail):
     def get_model(self):
         return models.ListServiceObject
     
-    def get_serializer(self):
+    def get_serializer_class(self):
         return serializers.ListServiceObjectSerializer
 
     def put_validate(self, object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:

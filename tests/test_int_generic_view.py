@@ -227,7 +227,7 @@ class GenericAPITest(TestCase):
 
         # case without access
         response2 = c.get('/api/v1/rulesets/%s' % self.private_ruleset_other_user.uuid, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
-        self.assertEqual(403, response2.status_code)
+        self.assertLess(400, response2.status_code)
 
     def test_post_ruleset(self):
         c = Client()

@@ -15,14 +15,17 @@
 
 from abc import ABC, abstractmethod
 from django.http import Http404, HttpResponseForbidden
+from django.db.models import Q
 from rest_framework import status
+from rest_framework.generics import RetrieveUpdateDestroyAPIView
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.schemas.openapi import AutoSchema
 from rest_framework.serializers import Serializer
 from vycinity.models import OWNED_OBJECT_STATE_DELETED, OWNED_OBJECT_STATE_PREPARED, customer_models, change_models, OwnedObject, OWNED_OBJECT_STATE_LIVE
-from typing import Any, List, Dict, Type
+from vycinity.permissions import IsOwnerOfObjectOrPublicObject
+from typing import Any, List, Dict, Optional, Type
 from uuid import UUID
 
 
@@ -77,7 +80,7 @@ class GenericSchema(AutoSchema):
         return self.serializer()
 
 class GenericOwnedObjectList(APIView, ABC):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsOwnerOfObjectOrPublicObject]
 
     @abstractmethod
     def get_model(self) -> Type[OwnedObject]:
@@ -164,16 +167,18 @@ class GenericOwnedObjectList(APIView, ABC):
                 return Response(data=semantic_validation.errors, status=rtn_status)
         return Response(data=serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-class GenericOwnedObjectDetail(APIView):
-    permission_classes = [IsAuthenticated]
+class GenericOwnedObjectDetail(RetrieveUpdateDestroyAPIView):
+    permission_classes = [IsOwnerOfObjectOrPublicObject]
+    lookup_field = 'uuid'
+    lookup_url_kwarg = 'uuid'
 
     @abstractmethod
     def get_model(self) -> Type[OwnedObject]:
         raise NotImplementedError('Model is not set.')
 
-    @abstractmethod
-    def get_serializer(self):
-        raise NotImplementedError('Serializer is not set.')
+    #@abstractmethod
+    #def get_serializer(self):
+    #    raise NotImplementedError('Serializer is not set.')
 
     @abstractmethod
     def filter_attributes(self, object: Any, customer: customer_models.Customer):
@@ -186,29 +191,50 @@ class GenericOwnedObjectDetail(APIView):
     def validate_owner(self):
         return True
 
-    def get(self, request, uuid, format=None):
-        instance = None
-        if 'changeset' in request.GET:
+    def get_queryset(self):
+        '''
+        Overrides RetrieveUpdateDestroyAPIView.get_queryset(). Returns a queryset including the current changeset.
+        '''
+        if not isinstance(self.request.user, customer_models.User):
+            raise AssertionError('Non usable user tries to retrieve an owned object.')
+
+        request: Request = self.request # type: ignore
+        visible_customers = request.user.customer.get_visible_customers()
+        if 'changeset' in request.query_params:
             try:
-                changeset = change_models.ChangeSet.objects.get(id=request.GET['changeset'])
-                if not changeset.owner in request.user.customer.get_visible_customers():
-                    return HttpResponseForbidden()
-                for change in changeset.changes.all():
-                    thisname = self.get_model().__name__
-                    if change.entity == thisname and change.action in [change_models.ACTION_CREATED, change_models.ACTION_MODIFIED] and change.post.uuid == uuid:
-                        instance = self.get_model().objects.get(pk=change.post.pk)
-                        break
-            except change_models.ChangeSet.DoesNotExist as dne_exc:
-                raise Http404() from dne_exc
-        if instance is None:
-            try:
-                instance = self.get_model().objects.get(uuid=uuid, state=OWNED_OBJECT_STATE_LIVE)
-            except (self.get_model().DoesNotExist, change_models.ChangeSet.DoesNotExist) as dne_exc:
-                raise Http404() from dne_exc
-        if not instance.owned_by(request.user.customer) and not instance.public:
-            return HttpResponseForbidden()
-        serialized_data = self.get_serializer()(instance).data
-        return Response(self.filter_attributes(serialized_data, request.user.customer))
+                changeset = change_models.ChangeSet.objects.get(pk=UUID(self.request.GET['changeset']), owner__in=visible_customers)
+                return self.get_model().filter_by_changeset_and_visibility(query=self.get_model().objects.all(), changeset=changeset, visible_customers=visible_customers)
+            except ValueError as e:
+                raise e
+            except change_models.ChangeSet.DoesNotExist as e:
+                raise Http404 from e
+        else:
+            return self.get_model().filter_query_by_customers_or_public(self.get_model().objects.filter(state=OWNED_OBJECT_STATE_LIVE), visible_customers)
+    
+
+    # def get(self, request, uuid, format=None):
+    #     instance = None
+    #     if 'changeset' in request.GET:
+    #         try:
+    #             changeset = change_models.ChangeSet.objects.get(id=request.GET['changeset'])
+    #             if not changeset.owner in request.user.customer.get_visible_customers():
+    #                 return HttpResponseForbidden()
+    #             for change in changeset.changes.all():
+    #                 thisname = self.get_model().__name__
+    #                 if change.entity == thisname and change.action in [change_models.ACTION_CREATED, change_models.ACTION_MODIFIED] and change.post.uuid == uuid:
+    #                     instance = self.get_model().objects.get(pk=change.post.pk)
+    #                     break
+    #         except change_models.ChangeSet.DoesNotExist as dne_exc:
+    #             raise Http404() from dne_exc
+    #     if instance is None:
+    #         try:
+    #             instance = self.get_model().objects.get(uuid=uuid, state=OWNED_OBJECT_STATE_LIVE)
+    #         except (self.get_model().DoesNotExist, change_models.ChangeSet.DoesNotExist) as dne_exc:
+    #             raise Http404() from dne_exc
+    #     if not instance.owned_by(request.user.customer) and not instance.public:
+    #         return HttpResponseForbidden()
+    #     serialized_data = self.get_serializer()(instance).data
+    #     return Response(self.filter_attributes(serialized_data, request.user.customer))
 
     def put(self, request, uuid, format=None):
         instance = None
