@@ -17,6 +17,7 @@ from rest_framework import serializers, relations
 from rest_framework.request import Request
 from uuid import UUID
 from vycinity.models import OWNED_OBJECT_STATE_LIVE, AbstractOwnedObject, OwnedObject, customer_models, firewall_models, network_models, change_models
+from vycinity.serializers.generics import BaseOwnedObjectSerializer
 
 class ManyWithoutNoneRelatedField(serializers.ManyRelatedField):
     def to_representation(self, iterable):
@@ -64,8 +65,8 @@ class OwnedObjectRelatedField(serializers.RelatedField):
             return None
 
     def to_internal_value(self, data):
-        if not isinstance(self.parent, serializers.BaseSerializer):
-            raise AssertionError('Parent serializer is not set but required for it\'s context.')
+        if self.parent is None or not hasattr(self.parent, 'context') or self.parent.context is None:
+            raise AssertionError('Parent Field or serializer is not set properly but required for it\'s context.')
         request = self.parent.context.get('request', None)
         if not isinstance(request, Request):
             raise AssertionError('Request is not set in context.')
@@ -92,6 +93,8 @@ class OwnedObjectRelatedField(serializers.RelatedField):
         except ValueError as e:
             raise serializers.ValidationError(['Reference UUID is not valid.'])
 
+#def check_access_linked_object(linked_o)
+
 class FirewallSerializer(serializers.ModelSerializer):
     class Meta:
         model = firewall_models.Firewall
@@ -100,13 +103,20 @@ class FirewallSerializer(serializers.ModelSerializer):
     owner = serializers.PrimaryKeyRelatedField(queryset=customer_models.Customer.objects.all(), pk_field=serializers.UUIDField(format='hex_verbose'), required=True)
     related_network = OwnedObjectRelatedField(model=network_models.Network, required=False)
 
-class RuleSetSerializer(serializers.ModelSerializer):
+class RuleSetSerializer(BaseOwnedObjectSerializer):
     class Meta:
         model = firewall_models.RuleSet
-        fields = ['uuid', 'owner', 'priority', 'firewalls', 'comment', 'public']
-        read_only_fields = ['uuid']
+        fields = BaseOwnedObjectSerializer.Meta.fields + ['owner', 'priority', 'firewalls', 'comment', 'public']
+        read_only_fields = BaseOwnedObjectSerializer.Meta.read_only_fields
     owner = serializers.PrimaryKeyRelatedField(queryset=customer_models.Customer.objects.all(), pk_field=serializers.UUIDField(format='hex_verbose'), required=True)
     firewalls = OwnedObjectRelatedField(many=True, model=firewall_models.Firewall, required=False)
+
+    def validate(self, data):
+        if 'firewalls' in data:
+            for firewall in data['firewalls']:
+                if (not firewall.public) and firewall.owner not in data['owner'].get_visible_customers():
+                    raise serializers.ValidationError({'firewalls': ['Referenced object not found.']})
+        return data
 
 class RuleSerializer(serializers.ModelSerializer):
     class Meta:

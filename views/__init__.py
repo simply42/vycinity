@@ -210,90 +210,65 @@ class GenericOwnedObjectDetail(RetrieveUpdateDestroyAPIView):
                 raise Http404 from e
         else:
             return self.get_model().filter_query_by_customers_or_public(self.get_model().objects.filter(state=OWNED_OBJECT_STATE_LIVE), visible_customers)
-    
 
-    # def get(self, request, uuid, format=None):
+    # def put(self, request, uuid, format=None):
     #     instance = None
+    #     changeset = None
+    #     change = None
     #     if 'changeset' in request.GET:
     #         try:
     #             changeset = change_models.ChangeSet.objects.get(id=request.GET['changeset'])
     #             if not changeset.owner in request.user.customer.get_visible_customers():
     #                 return HttpResponseForbidden()
-    #             for change in changeset.changes.all():
-    #                 thisname = self.get_model().__name__
-    #                 if change.entity == thisname and change.action in [change_models.ACTION_CREATED, change_models.ACTION_MODIFIED] and change.post.uuid == uuid:
-    #                     instance = self.get_model().objects.get(pk=change.post.pk)
+    #             if changeset.applied is not None:
+    #                 return Response({'changeset': CHANGESET_APPLIED_ERROR}, status=status.HTTP_400_BAD_REQUEST)
+    #             thisname = self.get_model().__name__
+    #             for actual_change in changeset.changes.all():
+    #                 if actual_change.entity == thisname and actual_change.post.uuid == uuid:
+    #                     instance = self.get_model().objects.get(pk=actual_change.post.pk)
+    #                     change = actual_change
+    #                     if change.action == change_models.ACTION_DELETED:
+    #                         change.action = change_models.ACTION_MODIFIED
     #                     break
     #         except change_models.ChangeSet.DoesNotExist as dne_exc:
     #             raise Http404() from dne_exc
     #     if instance is None:
     #         try:
-    #             instance = self.get_model().objects.get(uuid=uuid, state=OWNED_OBJECT_STATE_LIVE)
-    #         except (self.get_model().DoesNotExist, change_models.ChangeSet.DoesNotExist) as dne_exc:
+    #             pre_instance = self.get_model().objects.get(uuid=uuid, state=OWNED_OBJECT_STATE_LIVE)
+    #             change = change_models.Change(entity=self.get_model().__name__, pre=pre_instance, action=change_models.ACTION_MODIFIED)
+    #             instance = self.get_model().objects.get(pk=pre_instance.pk)
+    #             instance.pk = None
+    #             instance.id = None
+    #             instance._state.adding = True
+    #         except self.get_model().DoesNotExist as dne_exc:
     #             raise Http404() from dne_exc
-    #     if not instance.owned_by(request.user.customer) and not instance.public:
-    #         return HttpResponseForbidden()
-    #     serialized_data = self.get_serializer()(instance).data
-    #     return Response(self.filter_attributes(serialized_data, request.user.customer))
-
-    def put(self, request, uuid, format=None):
-        instance = None
-        changeset = None
-        change = None
-        if 'changeset' in request.GET:
-            try:
-                changeset = change_models.ChangeSet.objects.get(id=request.GET['changeset'])
-                if not changeset.owner in request.user.customer.get_visible_customers():
-                    return HttpResponseForbidden()
-                if changeset.applied is not None:
-                    return Response({'changeset': CHANGESET_APPLIED_ERROR}, status=status.HTTP_400_BAD_REQUEST)
-                thisname = self.get_model().__name__
-                for actual_change in changeset.changes.all():
-                    if actual_change.entity == thisname and actual_change.post.uuid == uuid:
-                        instance = self.get_model().objects.get(pk=actual_change.post.pk)
-                        change = actual_change
-                        if change.action == change_models.ACTION_DELETED:
-                            change.action = change_models.ACTION_MODIFIED
-                        break
-            except change_models.ChangeSet.DoesNotExist as dne_exc:
-                raise Http404() from dne_exc
-        if instance is None:
-            try:
-                pre_instance = self.get_model().objects.get(uuid=uuid, state=OWNED_OBJECT_STATE_LIVE)
-                change = change_models.Change(entity=self.get_model().__name__, pre=pre_instance, action=change_models.ACTION_MODIFIED)
-                instance = self.get_model().objects.get(pk=pre_instance.pk)
-                instance.pk = None
-                instance.id = None
-                instance._state.adding = True
-            except self.get_model().DoesNotExist as dne_exc:
-                raise Http404() from dne_exc
-        if changeset is None:
-            changeset = change_models.ChangeSet(owner=request.user.customer, user=request.user, owner_name=request.user.customer.name, user_name=request.user.name)
+    #     if changeset is None:
+    #         changeset = change_models.ChangeSet(owner=request.user.customer, user=request.user, owner_name=request.user.customer.name, user_name=request.user.name)
         
-        if not instance.owned_by(request.user.customer):
-            return Response(data={'id':['Access to object denied']}, status=status.HTTP_403_FORBIDDEN)
-        serializer = self.get_serializer()(instance, data=request.data)
-        if serializer.is_valid():
-            if self.validate_owner():
-                if not serializer.validated_data['owner'] in request.user.customer.get_visible_customers():
-                    return Response(data={'owner':['access to the owner is denied']}, status=status.HTTP_403_FORBIDDEN)
-            semantic_validation = self.put_validate(serializer.validated_data, request.user.customer, changeset)
-            if semantic_validation.is_ok():
-                prepared_object = serializer.save(state=OWNED_OBJECT_STATE_PREPARED)
-                changeset.save()
-                change.changeset = changeset
-                change.post = prepared_object
-                change.save()
-                serialized_data = self.get_serializer()(prepared_object).data
-                serialized_data['changeset'] = str(changeset.id)
-                return Response(serialized_data)
-            else:
-                rtncode = status.HTTP_400_BAD_REQUEST
-                if not semantic_validation.access_ok:
-                    rtncode = status.HTTP_403_FORBIDDEN
-                return Response(data=semantic_validation.errors, status=rtncode)
-        else:
-            return Response(data=serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    #     if not instance.owned_by(request.user.customer):
+    #         return Response(data={'id':['Access to object denied']}, status=status.HTTP_403_FORBIDDEN)
+    #     serializer = self.get_serializer()(instance, data=request.data)
+    #     if serializer.is_valid():
+    #         if self.validate_owner():
+    #             if not serializer.validated_data['owner'] in request.user.customer.get_visible_customers():
+    #                 return Response(data={'owner':['access to the owner is denied']}, status=status.HTTP_403_FORBIDDEN)
+    #         semantic_validation = self.put_validate(serializer.validated_data, request.user.customer, changeset)
+    #         if semantic_validation.is_ok():
+    #             prepared_object = serializer.save(state=OWNED_OBJECT_STATE_PREPARED)
+    #             changeset.save()
+    #             change.changeset = changeset
+    #             change.post = prepared_object
+    #             change.save()
+    #             serialized_data = self.get_serializer()(prepared_object).data
+    #             serialized_data['changeset'] = str(changeset.id)
+    #             return Response(serialized_data)
+    #         else:
+    #             rtncode = status.HTTP_400_BAD_REQUEST
+    #             if not semantic_validation.access_ok:
+    #                 rtncode = status.HTTP_403_FORBIDDEN
+    #             return Response(data=semantic_validation.errors, status=rtncode)
+    #     else:
+    #         return Response(data=serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
 
     def delete(self, request, uuid, format=None):
