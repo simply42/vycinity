@@ -122,7 +122,7 @@ class RuleSetList(GenericOwnedObjectList):
     def get_model(self):
         return models.RuleSet
 
-    def get_serializer(self):
+    def get_serializer_class(self):
         return serializers.RuleSetSerializer
 
     def filter_attributes(self, object_list: List[Any], customer: customer_models.Customer):

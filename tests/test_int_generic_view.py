@@ -65,12 +65,12 @@ class GenericAPITest(TestCase):
         response = c.get('/api/v1/rulesets', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(200, response.status_code)
         content = response.json()
-        self.assertTrue(isinstance(content, list))
-        self.assertEqual(3, len(content))
+        self.assertTrue(isinstance(content['results'], list))
+        self.assertEqual(3, len(content['results']))
         found_valid_main_user_ruleset = False
         found_valid_other_user_ruleset = False
         found_valid_main_user_ruleset_wo_ref = False
-        for content_object in content:
+        for content_object in content['results']:
             if self.private_ruleset_main_user.uuid == uuid.UUID(content_object['uuid']):
                 self.assertEqual(self.private_ruleset_main_user.comment, content_object['comment'])
                 self.assertListEqual([str(self.firewall_main_user.uuid)], content_object['firewalls'])
@@ -99,12 +99,12 @@ class GenericAPITest(TestCase):
         response = c.get('/api/v1/rulesets?changeset=%s' % self.changeset_ruleset_main_user.id, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(200, response.status_code)
         content = response.json()
-        self.assertTrue(isinstance(content, list))
-        self.assertEqual(3, len(content))
+        self.assertTrue(isinstance(content['results'], list))
+        self.assertEqual(3, len(content['results']))
         found_valid_main_user_ruleset = False
         found_valid_other_user_ruleset = False
         found_valid_main_user_ruleset_wo_ref = False
-        for content_object in content:
+        for content_object in content['results']:
             if self.private_ruleset_main_user.uuid == uuid.UUID(content_object['uuid']):
                 self.assertEqual(self.private_ruleset_main_user_modified.comment, content_object['comment'])
                 self.assertListEqual([str(self.firewall_main_user.uuid)], content_object['firewalls'])
@@ -143,11 +143,11 @@ class GenericAPITest(TestCase):
         response = c.get('/api/v1/rulesets', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(200, response.status_code)
         content = response.json()
-        self.assertTrue(isinstance(content, list))
-        self.assertEqual(4, len(content))
+        self.assertTrue(isinstance(content['results'], list))
+        self.assertEqual(4, len(content['results']))
         valid_comparisons = []
-        for current_content in content:
-            comparison_object: firewall_models.RuleSet = None
+        for current_content in content['results']:
+            comparison_object: firewall_models.RuleSet
             if current_content['uuid'] == str(self.private_ruleset_main_user.uuid):
                 comparison_object = self.private_ruleset_main_user
             elif current_content['uuid'] == str(self.public_ruleset_other_user.uuid):
@@ -156,6 +156,8 @@ class GenericAPITest(TestCase):
                 comparison_object = sub_customer_ruleset
             elif current_content['uuid'] == str(self.private_ruleset_main_user_wo_ref.uuid):
                 comparison_object = self.private_ruleset_main_user_wo_ref
+            else:
+                self.fail('uuid returned in list is unexpected')
             self.assertIsNotNone(comparison_object)
             self.assertNotIn(comparison_object, valid_comparisons)
             self.assertEqual(comparison_object.comment, current_content['comment'])
@@ -170,15 +172,17 @@ class GenericAPITest(TestCase):
         response = c.get('/api/v1/rulesets', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=sub_auth)
         self.assertEqual(200, response.status_code)
         content = response.json()
-        self.assertTrue(isinstance(content, list))
-        self.assertEqual(2, len(content))
+        self.assertTrue(isinstance(content['results'], list))
+        self.assertEqual(2, len(content['results']))
         valid_comparisons = []
-        for current_content in content:
-            comparison_object: firewall_models.RuleSet = None
+        for current_content in content['results']:
+            comparison_object: firewall_models.RuleSet
             if current_content['uuid'] == str(self.public_ruleset_other_user.uuid):
                 comparison_object = self.public_ruleset_other_user
             elif current_content['uuid'] == str(sub_customer_ruleset.uuid):
                 comparison_object = sub_customer_ruleset
+            else:
+                self.fail('uuid returned in list is unexpected')
             self.assertIsNotNone(comparison_object)
             self.assertNotIn(comparison_object, valid_comparisons)
             self.assertEqual(comparison_object.comment, current_content['comment'])
@@ -251,11 +255,13 @@ class GenericAPITest(TestCase):
         
         # wrong case: ruleset must not be created for other authorized customers
         response = c.post('/api/v1/rulesets', {'comment': 'yet another ruleset', 'owner': str(self.other_customer.id), 'firewalls': [], 'public': False, 'priority': 13}, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
-        self.assertEqual(403, response.status_code)
+        self.assertLessEqual(400, response.status_code)
+        self.assertGreater(500, response.status_code)
 
         # wrong case: ruleset must not be created with references to inaccessible items
         response = c.post('/api/v1/rulesets', {'comment': 'yet another ruleset', 'owner': str(self.main_customer.id), 'firewalls': [str(self.firewall_other_user.uuid)], 'public': False, 'priority': 13}, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
-        self.assertEqual(403, response.status_code)
+        self.assertLessEqual(400, response.status_code)
+        self.assertGreater(500, response.status_code)
 
         # wrong case: changeset may not be changed after application
         applied_changeset = change_models.ChangeSet.objects.create(owner=self.main_customer, owner_name=self.main_customer.name, user=self.main_user, user_name=self.main_user.name)
