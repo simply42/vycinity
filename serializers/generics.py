@@ -30,24 +30,6 @@ class BaseOwnedObjectSerializer(serializers.ModelSerializer):
 
     changeset = serializers.SerializerMethodField()
 
-    # def to_internal_value(self, data):
-    #     '''
-    #     This overrides just checks the data a little bit, else uses ModelSerializers behavior.
-    #     '''
-    #     data = super().to_internal_value(data)
-
-    #     request: Request = self._context['request']
-    #     if not request or not isinstance(request, Request):
-    #         raise AssertionError('request is not set as context for this serializer (or has wrong type). This makes operation impossible.', request)
-    #     if 'changeset' in request.query_params:
-    #         try:
-    #             changeset = ChangeSet.objects.get(pk=uuid.UUID(request.query_params['changeset']), owner__in=request.user.customer.get_visible_customers())
-    #             if changeset.applied is not None:
-    #                 raise ValidationError(message = CHANGESET_APPLIED_ERROR)
-    #         except ChangeSet.DoesNotExist as e:
-    #             raise serializers.ValidationError(['Change set does not exist']) from e
-    #     return data
-
     def get_changeset(self, obj: OwnedObject):
         if obj.change is None:
             return None
@@ -117,30 +99,6 @@ class BaseOwnedObjectSerializer(serializers.ModelSerializer):
         change.post = modified_instance
         change.save()
 
-        # if not instance.owned_by(request.user.customer):
-        #         return Response(data={'id':['Access to object denied']}, status=status.HTTP_403_FORBIDDEN)
-        #     serializer = self.get_serializer()(instance, data=request.data)
-        #     if serializer.is_valid():
-        #         if self.validate_owner():
-        #             if not serializer.validated_data['owner'] in request.user.customer.get_visible_customers():
-        #                 return Response(data={'owner':['access to the owner is denied']}, status=status.HTTP_403_FORBIDDEN)
-        #         semantic_validation = self.put_validate(serializer.validated_data, request.user.customer, changeset)
-        #         if semantic_validation.is_ok():
-        #             prepared_object = serializer.save(state=OWNED_OBJECT_STATE_PREPARED)
-        #             changeset.save()
-        #             change.changeset = changeset
-        #             change.post = prepared_object
-        #             change.save()
-        #             serialized_data = self.get_serializer()(prepared_object).data
-        #             serialized_data['changeset'] = str(changeset.id)
-        #             return Response(serialized_data)
-        #         else:
-        #             rtncode = status.HTTP_400_BAD_REQUEST
-        #             if not semantic_validation.access_ok:
-        #                 rtncode = status.HTTP_403_FORBIDDEN
-        #             return Response(data=semantic_validation.errors, status=rtncode)
-        #     else:
-        #         return Response(data=serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         return modified_instance
 
     def create(self, validated_data):
