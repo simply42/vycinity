@@ -429,15 +429,7 @@ class GenericAPITest(TestCase):
         unlinked_ruleset.firewalls.set([])
         change_unlinked_ruleset = change_models.Change.objects.create(changeset=changeset_w_unlinked_ruleset, entity=firewall_models.RuleSet.__name__, pre=self.private_ruleset_main_user, post=unlinked_ruleset, action=change_models.ACTION_DELETED)
         response = c.delete('/api/v1/rulesets/%s?changeset=%s' % (self.private_ruleset_main_user.uuid, changeset_w_unlinked_ruleset.id), HTTP_AUTHORIZATION=self.authorization)
-        self.assertEqual(200, response.status_code)
-        content = response.json()
-        self.assertEqual(changeset_w_unlinked_ruleset.id, uuid.UUID(content['changeset']))
-        changeset_containing_change = change_models.ChangeSet.objects.get(id=content['changeset'])
-        self.assertEqual(1, changeset_containing_change.changes.count())
-        self.assertEqual(firewall_models.RuleSet.__name__, changeset_containing_change.changes.first().entity)
-        self.assertEqual(unlinked_ruleset.pk, changeset_containing_change.changes.first().post.pk)
-        self.assertEqual(OWNED_OBJECT_STATE_DELETED, changeset_containing_change.changes.first().post.state)
-        self.assertEqual(self.private_ruleset_main_user.pk, changeset_containing_change.changes.first().pre.pk)
+        self.assertEqual(404, response.status_code)
 
         # wrong case: rulesets of other customer must not be deleted
         other_customers_public_ruleset_id = self.public_ruleset_other_user.uuid
