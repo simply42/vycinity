@@ -16,8 +16,8 @@
 from rest_framework import serializers, relations
 from rest_framework.request import Request
 from uuid import UUID
-from vycinity.models import OWNED_OBJECT_STATE_LIVE, AbstractOwnedObject, OwnedObject, customer_models, firewall_models, network_models, change_models
-from vycinity.serializers.generics import BaseOwnedObjectSerializer
+from vycinity.models import OWNED_OBJECT_STATE_LIVE, OwnedObject, customer_models, firewall_models, network_models, change_models
+from vycinity.serializers.generics import AbstractOwnedObjectSerializer, BaseOwnedObjectSerializer
 
 class ManyWithoutNoneRelatedField(serializers.ManyRelatedField):
     def to_representation(self, iterable):
@@ -25,7 +25,6 @@ class ManyWithoutNoneRelatedField(serializers.ManyRelatedField):
             self.child_relation.to_representation(value) # type: ignore
             for value in iterable
         ])
-
 
 class OwnedObjectRelatedField(serializers.RelatedField):
     '''
@@ -73,9 +72,7 @@ class OwnedObjectRelatedField(serializers.RelatedField):
         if not isinstance(request.user, customer_models.User):
             raise AssertionError('Related field requires an internal user for verifiying the visibility.')
         try:
-
             uuid = UUID(data)
-
             result = None
             visible_customers = request.user.customer.get_visible_customers()
             if 'changeset' in request.query_params:
@@ -93,22 +90,24 @@ class OwnedObjectRelatedField(serializers.RelatedField):
         except ValueError as e:
             raise serializers.ValidationError(['Reference UUID is not valid.'])
 
-#def check_access_linked_object(linked_o)
-
-class FirewallSerializer(serializers.ModelSerializer):
+class FirewallSerializer(BaseOwnedObjectSerializer):
     class Meta:
         model = firewall_models.Firewall
-        fields = ['uuid', 'owner', 'stateful', 'name', 'related_network', 'default_action_into', 'default_action_from', 'public']
-        read_only_fields = ['uuid']
-    owner = serializers.PrimaryKeyRelatedField(queryset=customer_models.Customer.objects.all(), pk_field=serializers.UUIDField(format='hex_verbose'), required=True)
+        fields = BaseOwnedObjectSerializer.Meta.fields + ['stateful', 'name', 'related_network', 'default_action_into', 'default_action_from']
+        read_only_fields = BaseOwnedObjectSerializer.Meta.read_only_fields
     related_network = OwnedObjectRelatedField(model=network_models.Network, required=False)
+
+    def validate(self, data):
+        if 'related_network' in data:
+            if (not data['related_network'].public) and data['related_network'].owner not in data['owner'].get_visible_customers():
+                raise serializers.ValidationError({'network': ['Referenced object not found.']})
+        return super().validate(data)
 
 class RuleSetSerializer(BaseOwnedObjectSerializer):
     class Meta:
         model = firewall_models.RuleSet
-        fields = BaseOwnedObjectSerializer.Meta.fields + ['owner', 'priority', 'firewalls', 'comment', 'public']
+        fields = BaseOwnedObjectSerializer.Meta.fields + ['priority', 'firewalls', 'comment']
         read_only_fields = BaseOwnedObjectSerializer.Meta.read_only_fields
-    owner = serializers.PrimaryKeyRelatedField(queryset=customer_models.Customer.objects.all(), pk_field=serializers.UUIDField(format='hex_verbose'), required=True)
     firewalls = OwnedObjectRelatedField(many=True, model=firewall_models.Firewall, required=False)
 
     def validate(self, data):
@@ -116,94 +115,112 @@ class RuleSetSerializer(BaseOwnedObjectSerializer):
             for firewall in data['firewalls']:
                 if (not firewall.public) and firewall.owner not in data['owner'].get_visible_customers():
                     raise serializers.ValidationError({'firewalls': ['Referenced object not found.']})
-        return data
+        return super().validate(data)
 
-class RuleSerializer(serializers.ModelSerializer):
+class RuleSerializer(AbstractOwnedObjectSerializer):
     class Meta:
         model = firewall_models.Rule
-        fields = ['uuid', 'related_ruleset', 'priority', 'comment', 'disable']
-        read_only_fields = ['uuid']
+        fields = AbstractOwnedObjectSerializer.Meta.fields + ['related_ruleset', 'priority', 'comment', 'disable']
+        read_only_fields = AbstractOwnedObjectSerializer.Meta.fields
     related_ruleset = OwnedObjectRelatedField(model=firewall_models.RuleSet, required=True)
 
-class AddressObjectSerializer(serializers.ModelSerializer):
+class AddressObjectSerializer(BaseOwnedObjectSerializer):
     class Meta:
         model = firewall_models.AddressObject
-        fields = ['uuid', 'name', 'owner', 'public']
-        read_only_fields = ['uuid']
-    owner = serializers.PrimaryKeyRelatedField(queryset=customer_models.Customer.objects.all(), pk_field=serializers.UUIDField(format='hex_verbose'), required=True)
+        fields = BaseOwnedObjectSerializer.Meta.fields + ['name']
+        read_only_fields = BaseOwnedObjectSerializer.Meta.read_only_fields
 
-class ServiceObjectSerializer(serializers.ModelSerializer):
+class ServiceObjectSerializer(BaseOwnedObjectSerializer):
     class Meta:
         model = firewall_models.ServiceObject
-        fields = ['uuid', 'name', 'owner', 'public']
-        read_only_fields = ['uuid']
-    owner = serializers.PrimaryKeyRelatedField(queryset=customer_models.Customer.objects.all(), pk_field=serializers.UUIDField(format='hex_verbose'), required=True)
+        fields = BaseOwnedObjectSerializer.Meta.fields + ['name']
+        read_only_fields = BaseOwnedObjectSerializer.Meta.read_only_fields
 
-class BasicRuleSerializer(serializers.ModelSerializer):
+class BasicRuleSerializer(RuleSerializer):
     class Meta:
         model = firewall_models.BasicRule
-        fields = ['uuid', 'related_ruleset', 'priority', 'comment', 'disable', 'source_address', 'destination_address', 'destination_service', 'action', 'log']
-        read_only_fields = ['uuid']
-    related_ruleset = OwnedObjectRelatedField(model=firewall_models.RuleSet, required=True)
+        fields = RuleSerializer.Meta.fields + ['source_address', 'destination_address', 'destination_service', 'action', 'log']
+        read_only_fields = RuleSerializer.Meta.read_only_fields
     source_address = OwnedObjectRelatedField(model=firewall_models.AddressObject, required=False)
     destination_address = OwnedObjectRelatedField(model=firewall_models.AddressObject, required=True)
     destination_service = OwnedObjectRelatedField(model=firewall_models.ServiceObject, required=False)
 
-class CustomRuleSerializer(serializers.ModelSerializer):
+    def validate(self, data):
+        if 'related_ruleset' not in data:
+            raise serializers.ValidationError({'related_ruleset': ['This item is required.']})
+        for attr in ['source_address', 'destination_address', 'destination_service']:
+            if attr in data:
+                if (not data[attr].public) and data[attr].owner not in data['related_ruleset'].owner.get_visible_customers():
+                    raise serializers.ValidationError({attr: ['Referenced object not found.']})
+        return super().validate(data)
+
+class CustomRuleSerializer(RuleSerializer):
     class Meta:
         model = firewall_models.CustomRule
-        fields = ['id', 'related_ruleset', 'priority', 'comment', 'disable', 'ip_version', 'rule']
-        read_only_fields = ['id']
-    related_ruleset = OwnedObjectRelatedField(model=firewall_models.RuleSet, required=True)
+        fields = RuleSerializer.Meta.fields + ['ip_version', 'rule']
+        read_only_fields = RuleSerializer.Meta.read_only_fields
 
-class NetworkAddressObjectSerializer(serializers.ModelSerializer):
+class NetworkAddressObjectSerializer(AddressObjectSerializer):
     class Meta:
         model = firewall_models.NetworkAddressObject
-        fields = ['uuid', 'name', 'owner', 'public', 'related_network']
-        read_only_fields = ['uuid']
-    owner = serializers.PrimaryKeyRelatedField(queryset=customer_models.Customer.objects.all(), pk_field=serializers.UUIDField(format='hex_verbose'), required=True)
+        fields = AddressObjectSerializer.Meta.fields + ['related_network']
+        read_only_fields = AddressObjectSerializer.Meta.read_only_fields
     related_network = OwnedObjectRelatedField(model=network_models.Network, required=True)
 
-class CIDRAddressObjectSerializer(serializers.ModelSerializer):
+    def validate(self, data):
+        if 'related_network' in data:
+            if (not data['related_network'].public) and data['related_network'].owner not in data['owner'].get_visible_customers():
+                raise serializers.ValidationError({'network': ['Referenced object not found.']})
+        return super().validate(data)
+
+class CIDRAddressObjectSerializer(AddressObjectSerializer):
     class Meta:
         model = firewall_models.CIDRAddressObject
-        fields = ['uuid', 'name', 'owner', 'public', 'ipv6_network_address', 'ipv6_network_bits', 'ipv4_network_address', 'ipv4_network_bits']
-        read_only_fields = ['uuid']
-    owner = serializers.PrimaryKeyRelatedField(queryset=customer_models.Customer.objects.all(), pk_field=serializers.UUIDField(format='hex_verbose'), required=True)
+        fields = AddressObjectSerializer.Meta.fields + ['ipv6_network_address', 'ipv6_network_bits', 'ipv4_network_address', 'ipv4_network_bits']
+        read_only_fields = AddressObjectSerializer.Meta.read_only_fields
 
-class HostAddressObjectSerializer(serializers.ModelSerializer):
+class HostAddressObjectSerializer(AddressObjectSerializer):
     class Meta:
         model = firewall_models.HostAddressObject
-        fields = ['uuid', 'name', 'owner', 'public', 'ipv6_address', 'ipv4_address']
-        read_only_fields = ['uuid']
-    owner = serializers.PrimaryKeyRelatedField(queryset=customer_models.Customer.objects.all(), pk_field=serializers.UUIDField(format='hex_verbose'), required=True)
+        fields = AddressObjectSerializer.Meta.fields + ['ipv6_address', 'ipv4_address']
+        read_only_fields = AddressObjectSerializer.Meta.read_only_fields
 
-class ListAddressObjectSerializer(serializers.ModelSerializer):
+class ListAddressObjectSerializer(AddressObjectSerializer):
     class Meta:
         model = firewall_models.ListAddressObject
-        fields = ['uuid', 'name', 'owner', 'public', 'elements']
-        read_only_fields = ['uuid']
-    owner = serializers.PrimaryKeyRelatedField(queryset=customer_models.Customer.objects.all(), pk_field=serializers.UUIDField(format='hex_verbose'), required=True)
+        fields = AddressObjectSerializer.Meta.fields + ['elements']
+        read_only_fields = AddressObjectSerializer.Meta.read_only_fields
     elements = OwnedObjectRelatedField(many=True, model=firewall_models.AddressObject, required=False)
 
-class SimpleServiceObjectSerializer(serializers.ModelSerializer):
+    def validate(self, data):
+        if 'elements' in data:
+            for element in data['elements']:
+                if (not element.public) and element.owner not in data['owner'].get_visible_customers():
+                    raise serializers.ValidationError({'elements': ['Referenced object not found.']})
+        return super().validate(data)
+
+class SimpleServiceObjectSerializer(ServiceObjectSerializer):
     class Meta:
         model = firewall_models.SimpleServiceObject
-        fields = ['uuid', 'name', 'owner', 'public', 'protocol', 'port']
-        read_only_fields = ['uuid']
-    owner = serializers.PrimaryKeyRelatedField(queryset=customer_models.Customer.objects.all(), pk_field=serializers.UUIDField(format='hex_verbose'), required=True)
+        fields = ServiceObjectSerializer.Meta.fields + ['protocol', 'port']
+        read_only_fields = ServiceObjectSerializer.Meta.read_only_fields
 
-class ListServiceObjectSerializer(serializers.ModelSerializer):
+class ListServiceObjectSerializer(ServiceObjectSerializer):
     class Meta:
         model = firewall_models.ListServiceObject
-        fields = ['uuid', 'name', 'owner', 'public', 'elements']
-        read_only_fields = ['uuid']
-    owner = serializers.PrimaryKeyRelatedField(queryset=customer_models.Customer.objects.all(), pk_field=serializers.UUIDField(format='hex_verbose'), required=True)
+        fields = ServiceObjectSerializer.Meta.fields + ['elements']
+        read_only_fields = ServiceObjectSerializer.Meta.read_only_fields
     elements = OwnedObjectRelatedField(many=True, model=firewall_models.ServiceObject, required=False)
 
-class RangeServiceObjectSerializer(serializers.ModelSerializer):
+    def validate(self, data):
+        if 'elements' in data:
+            for element in data['elements']:
+                if (not element.public) and element.owner not in data['owner'].get_visible_customers():
+                    raise serializers.ValidationError({'elements': ['Referenced object not found.']})
+        return super().validate(data)
+
+class RangeServiceObjectSerializer(ServiceObjectSerializer):
     class Meta:
         model = firewall_models.RangeServiceObject
-        fields = ['uuid', 'name', 'owner', 'public', 'protocol', 'start_port', 'end_port']
-        read_only_fields = ['uuid']
-    owner = serializers.PrimaryKeyRelatedField(queryset=customer_models.Customer.objects.all(), pk_field=serializers.UUIDField(format='hex_verbose'), required=True)
+        fields = ServiceObjectSerializer.Meta.fields + ['protocol', 'start_port', 'end_port']
+        read_only_fields = ServiceObjectSerializer.Meta.read_only_fields

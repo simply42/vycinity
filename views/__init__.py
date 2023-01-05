@@ -23,40 +23,13 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.schemas.openapi import AutoSchema
 from rest_framework.serializers import Serializer, ValidationError
-from vycinity.models import OWNED_OBJECT_STATE_DELETED, OWNED_OBJECT_STATE_PREPARED, customer_models, change_models, OwnedObject, OWNED_OBJECT_STATE_LIVE
+from vycinity.models import OWNED_OBJECT_STATE_DELETED, OWNED_OBJECT_STATE_PREPARED, customer_models, change_models, AbstractOwnedObject, OWNED_OBJECT_STATE_LIVE
 from vycinity.permissions import IsOwnerOfObjectOrPublicObject
 from typing import Any, List, Dict, Optional, Type
 from uuid import UUID
 
 
 CHANGESET_APPLIED_ERROR = 'Changeset is already applied.'
-
-class ValidationResult:
-    '''
-    Ergebnis einer Eingabe-Validierung.
-    '''
-
-    def __init__(self, access_ok: bool = True, errors: Dict[str,List[str]] = []):
-        '''
-        Erstellt ein Ergebnis.
-
-        params:
-            access_ok: Ob der Zugang für die zusätzlich angegebene Entität
-                       erlaubt ist.
-            errors: Eine Liste mit sonstigen, semantischen Fehlern in den
-                    Angaben.
-        '''
-        self.access_ok = access_ok
-        self.errors = errors
-
-    def is_ok(self) -> bool:
-        '''
-        Gibt zurück ob das gegebene Objekt logisch und aus Zugangssicht
-        speicherbar ist.
-        '''
-        return self.access_ok and len(self.errors) == 0
-
-VALIDATION_OK = ValidationResult(access_ok=True, errors=[])
 
 class GenericOwnedObjectSchema(AutoSchema):
     def __init__(self, serializer: Type[Serializer], **kwargs):
@@ -83,23 +56,8 @@ class GenericOwnedObjectList(ListCreateAPIView, ABC):
     permission_classes = [IsOwnerOfObjectOrPublicObject]
 
     @abstractmethod
-    def get_model(self) -> Type[OwnedObject]:
+    def get_model(self) -> Type[AbstractOwnedObject]:
         raise NotImplementedError('Model is not set.')
-
-    @abstractmethod
-    def get_serializer_class(self) -> Type[Serializer]:
-        raise NotImplementedError('Serializer is not set.')
-
-    @abstractmethod
-    def filter_attributes(self, object_list: List[Any], customer: customer_models.Customer):
-        raise NotImplementedError('filter_attributes is not defined.')
-
-    @abstractmethod
-    def post_validate(self, object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
-        raise NotImplementedError('post_validate is not defined.')
-
-    def validate_owner(self):
-        return True
 
     def get_queryset(self):
         '''
@@ -128,19 +86,8 @@ class GenericOwnedObjectDetail(RetrieveUpdateDestroyAPIView):
     lookup_url_kwarg = 'uuid'
 
     @abstractmethod
-    def get_model(self) -> Type[OwnedObject]:
+    def get_model(self) -> Type[AbstractOwnedObject]:
         raise NotImplementedError('Model is not set.')
-
-    @abstractmethod
-    def filter_attributes(self, object: Any, customer: customer_models.Customer):
-        raise NotImplementedError('filter_attributes is not defined.')
-
-    @abstractmethod
-    def put_validate(self, object: Any, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
-        raise NotImplementedError('put_validate is not defined.')
-
-    def validate_owner(self):
-        return True
 
     def get_queryset(self):
         '''
@@ -177,7 +124,7 @@ class GenericOwnedObjectDetail(RetrieveUpdateDestroyAPIView):
         return Response(status=status.HTTP_200_OK, data={'changeset': changeset.id})
 
     def perform_destroy(self, instance):
-        if not isinstance(instance, OwnedObject):
+        if not isinstance(instance, AbstractOwnedObject):
             raise AssertionError(f'An OwnedObject should be given, but got {type(instance).__name__}')
         request: Request = self.request # type: ignore
 
@@ -206,7 +153,7 @@ class GenericOwnedObjectDetail(RetrieveUpdateDestroyAPIView):
             change = change_models.Change(changeset=changeset, entity=self.get_model().__name__, action=change_models.ACTION_DELETED)
         if instance.state == OWNED_OBJECT_STATE_LIVE:
             try:
-                change.pre = instance
+                change.pre = instance # type: ignore
                 instance = self.get_model().objects.get(pk=change.pre.pk)
                 instance.id = None
                 instance.pk = None

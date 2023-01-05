@@ -24,7 +24,7 @@ from typing import Any, List, Type
 from vycinity.models import OWNED_OBJECT_STATE_LIVE, OWNED_OBJECT_STATE_PREPARED, change_models, customer_models, OwnedObject
 from vycinity.models.network_models import Network, ManagedInterface, ManagedVRRPInterface
 from vycinity.serializers.network_serializers import NetworkSerializer, ManagedInterfaceSerializer, ManagedVRRPInterfaceSerializer
-from vycinity.views import GenericOwnedObjectDetail, GenericOwnedObjectList, ValidationResult, GenericOwnedObjectSchema, GenericSchema
+from vycinity.views import GenericOwnedObjectDetail, GenericOwnedObjectList, GenericOwnedObjectSchema, GenericSchema
 
 
 class NetworkList(GenericOwnedObjectList):
@@ -37,38 +37,11 @@ class NetworkList(GenericOwnedObjectList):
     '''
     schema = GenericOwnedObjectSchema(NetworkSerializer, tags=['network'], operation_id_base='Network', component_name='Name')
 
-    def filter_attributes(self, object_list: List[Any], customer: customer_models.Customer):
-        return object_list
-
     def get_model(self) -> Type[OwnedObject]:
         return Network
 
-    def get_serializer(self) -> Type[Serializer]:
+    def get_serializer_class(self) -> Type[Serializer]:
         return NetworkSerializer
-
-    def post_validate(self, object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
-        return NetworkList.validate_network_semantically(object, customer, changeset)
-
-    @staticmethod
-    def validate_network_semantically(object: dict, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
-        rtn = ValidationResult()
-        if object['owner'] not in customer.get_visible_customers():
-            rtn.access_ok = False
-        if 'ipv4_network_address' in object:
-            if 'ipv4_network_bits' not in object:
-                rtn.errors.append('Bits for IPv4 need to be set if network is used.')
-            else:
-                for potentially_colliding_network in Network.filter_query_by_liveness_or_changeset(Network.objects.filter(ipv4_network_address=object['ipv4_network_address'], ipv4_network_bits=object['ipv4_network_bits']), changeset).all():
-                    if potentially_colliding_network.state == OWNED_OBJECT_STATE_LIVE or (potentially_colliding_network.state == OWNED_OBJECT_STATE_PREPARED and potentially_colliding_network.change.changeset == changeset):
-                        rtn.errors.append('Collision in IPv4 Network')
-        if 'ipv6_network_address' in object:
-            if 'ipv6_network_bits' not in object:
-                rtn.errors.append('Bits for IPv6 need to be set if network is used.')
-            else:
-                for potentially_colliding_network in Network.filter_query_by_liveness_or_changeset(Network.objects.filter(ipv6_network_address=object['ipv6_network_address'], ipv6_network_bits=object['ipv6_network_bits']), changeset).all():
-                    if potentially_colliding_network.state == OWNED_OBJECT_STATE_LIVE or (potentially_colliding_network.state == OWNED_OBJECT_STATE_PREPARED and potentially_colliding_network.change.changeset == changeset):
-                        rtn.errors.append('Collision in IPv6 Network')
-        return rtn
 
 
 class NetworkDetailView(GenericOwnedObjectDetail):
@@ -84,17 +57,12 @@ class NetworkDetailView(GenericOwnedObjectDetail):
     '''
     schema = GenericOwnedObjectSchema(NetworkSerializer, tags=['network'], operation_id_base='Network', component_name='Name')
 
-    def filter_attributes(self, object: Any, customer: customer_models.Customer):
-        return object
-
     def get_model(self) -> Type[OwnedObject]:
         return Network
     
-    def get_serializer(self):
+    def get_serializer_class(self):
         return NetworkSerializer
 
-    def put_validate(self, object: Any, customer: customer_models.Customer, changeset: change_models.ChangeSet) -> ValidationResult:
-        return NetworkList.validate_network_semantically(object, customer, changeset)
 
 class ManagedInterfaceList(APIView):
     '''

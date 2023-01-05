@@ -20,25 +20,15 @@ from rest_framework.request import Request
 from vycinity.models import OWNED_OBJECT_STATE_LIVE, OWNED_OBJECT_STATE_PREPARED, AbstractOwnedObject, OwnedObject
 from vycinity.models.change_models import Change, ChangeSet, ACTION_CREATED, ACTION_DELETED, ACTION_MODIFIED
 from vycinity.models.customer_models import Customer, User
-from vycinity.views import CHANGESET_APPLIED_ERROR
 import uuid
 
-class BaseOwnedObjectSerializer(serializers.ModelSerializer):
+class AbstractOwnedObjectSerializer(serializers.ModelSerializer):
     class Meta:
-        fields = ['uuid', 'owner', 'changeset']
-        read_only_fields = ['uuid', 'changeset']
+        fields = ['uuid', 'changeset']
+        read_only_fields = fields
 
-    owner = serializers.PrimaryKeyRelatedField(queryset=Customer.objects.all(), pk_field=serializers.UUIDField(format='hex_verbose'), required=True)
     changeset = serializers.SerializerMethodField()
-
-    def validate_owner(self, value):
-        request: Request = self._context['request']
-        if not request or not isinstance(request, Request):
-            raise AssertionError('request is not set as context for this serializer (or has wrong type). This causes errors while validation.', request)
-        if value not in request.user.customer.get_visible_customers():
-            raise serializers.ValidationError(['Owner is not accessible by current user.'])
-        return value
-
+    
     def get_changeset(self, obj: OwnedObject):
         request: Request = self._context['request']
         if not request or not isinstance(request, Request):
@@ -64,7 +54,7 @@ class BaseOwnedObjectSerializer(serializers.ModelSerializer):
         return None
 
     def update(self, instance, validated_data):
-        if not isinstance(instance, OwnedObject):
+        if not isinstance(instance, AbstractOwnedObject):
             raise AssertionError('Instance is no OwnedObject. This is a programming issue.')
         request: Request = self._context['request']
         if not request or not isinstance(request, Request):
@@ -75,7 +65,7 @@ class BaseOwnedObjectSerializer(serializers.ModelSerializer):
             raise AssertionError('Meta is missing in this serializer')
         if not hasattr(self.Meta, 'model'): # type: ignore
             raise AssertionError('Meta\'s model is missing in this serializer')
-        model: type[OwnedObject] = self.Meta.model # type: ignore
+        model: type[AbstractOwnedObject] = self.Meta.model # type: ignore
 
         changeset = None
         change = None
@@ -127,9 +117,7 @@ class BaseOwnedObjectSerializer(serializers.ModelSerializer):
         changeset.save()
         change.post = modified_instance
         change.save()
-
         return modified_instance
-
 
     def create(self, validated_data):
         request: Request = self._context['request']
@@ -141,7 +129,7 @@ class BaseOwnedObjectSerializer(serializers.ModelSerializer):
             raise AssertionError('Meta is missing in this serializer')
         if not hasattr(self.Meta, 'model'): # type: ignore
             raise AssertionError('Meta\'s model is missing in this serializer')
-        model: type[OwnedObject] = self.Meta.model # type: ignore
+        model: type[AbstractOwnedObject] = self.Meta.model # type: ignore
 
         changeset = None
         if 'changeset' in request.query_params:
@@ -172,5 +160,20 @@ class BaseOwnedObjectSerializer(serializers.ModelSerializer):
         changeset.save()
         change.post = instance
         change.save()
-
         return instance
+
+
+class BaseOwnedObjectSerializer(AbstractOwnedObjectSerializer):
+    class Meta:
+        fields = AbstractOwnedObjectSerializer.Meta.fields + ['owner', 'public']
+        read_only_fields = AbstractOwnedObjectSerializer.Meta.read_only_fields
+
+    owner = serializers.PrimaryKeyRelatedField(queryset=Customer.objects.all(), pk_field=serializers.UUIDField(format='hex_verbose'), required=True)
+
+    def validate_owner(self, value):
+        request: Request = self._context['request']
+        if not request or not isinstance(request, Request):
+            raise AssertionError('request is not set as context for this serializer (or has wrong type). This causes errors while validation.', request)
+        if value not in request.user.customer.get_visible_customers():
+            raise serializers.ValidationError(['Owner is not accessible by current user.'])
+        return value

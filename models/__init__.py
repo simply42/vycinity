@@ -146,7 +146,7 @@ class OwnedObject(AbstractOwnedObject):
     Abstract object describing relation to a `Customer`.
     '''
     
-    owner = models.ForeignKey(customer_models.Customer, on_delete=models.CASCADE) 
+    owner = models.ForeignKey(customer_models.Customer, on_delete=models.CASCADE) # type: ignore
     public = models.BooleanField(default=False)
 
     class Meta:

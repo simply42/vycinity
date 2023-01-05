@@ -280,7 +280,7 @@ class GenericAPITest(TestCase):
         changeset = change_models.ChangeSet.objects.create(owner=self.main_customer, user=self.main_user, owner_name=self.main_customer.name, user_name=self.main_user.name)
         ruleset_in_changeset: firewall_models.RuleSet = firewall_models.RuleSet.objects.create(comment='my ruleset', owner=self.main_customer, public=False, priority=14, state=OWNED_OBJECT_STATE_PREPARED)
         ruleset_in_changeset.firewalls.set([self.firewall_main_user])
-        change_models.Change.objects.create(changeset=changeset, entity=firewall_models.RuleSet.__name__, post=ruleset_in_changeset)
+        change_models.Change.objects.create(changeset=changeset, entity=firewall_models.RuleSet.__name__, post=ruleset_in_changeset, action=change_models.ACTION_CREATED)
         
         response = c.post('/api/v1/rules/basic?changeset={}'.format(changeset.id), {'related_ruleset': str(ruleset_in_changeset.uuid), 'priority': 10, 'disable': False, 'destination_address': str(any_address_object.uuid), 'log': False, 'action': 'accept'}, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(201, response.status_code)
