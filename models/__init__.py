@@ -16,10 +16,10 @@
 from abc import abstractmethod, abstractstaticmethod
 from django.db import models
 from polymorphic.models import PolymorphicModel
-from django.db.models import constraints
+from django.db.models import constraints, manager, query
 from rest_framework import serializers
 from vycinity.models import customer_models, change_models
-from typing import Any, List
+from typing import Any, List, Union
 import uuid
 
 OWNED_OBJECT_STATE_PREPARED = 'prepared'
@@ -110,6 +110,27 @@ class AbstractOwnedObject(PolymorphicModel):
         '''
         return query.filter(models.Q(state=OWNED_OBJECT_STATE_LIVE) | models.Q(change__changeset=changeset))
 
+    @classmethod
+    def filter_by_changeset_and_visibility(cls, query: Union[manager.Manager, query.QuerySet], changeset: change_models.ChangeSet, visible_customers: list[customer_models.Customer]) -> Union[manager.Manager, query.QuerySet]:
+        '''
+        Returns a filtered queryset or manager (depends on what the implementing class provides)
+        for elements in same changeset and modified or live elements for the current user.
+
+        params:
+            query: A query to filter.
+            changeset: A Changeset for finding additional instances that are not live.
+            visible_customers: A list of customers the retriever is able to see.
+        
+        returns: The filtered queryset-like object.
+        '''
+        referenced_modified_changes = changeset.changes.filter(entity=cls.__name__, pre__isnull=False).only('pre')
+        pk_referenced_modified_objects_list = map(lambda change: change.pre.pk, referenced_modified_changes)
+        return cls.filter_query_by_customers_or_public(
+            query.filter(
+                (models.Q(state=OWNED_OBJECT_STATE_LIVE) & (~models.Q(pk__in=pk_referenced_modified_objects_list))) | 
+                models.Q(state=OWNED_OBJECT_STATE_PREPARED, change__changeset=changeset, change__action__in=[change_models.ACTION_CREATED, change_models.ACTION_MODIFIED])),
+            visible_customers)
+
     @abstractstaticmethod
     def get_serializer() -> serializers.Serializer:
         '''
@@ -125,7 +146,7 @@ class OwnedObject(AbstractOwnedObject):
     Abstract object describing relation to a `Customer`.
     '''
     
-    owner = models.ForeignKey(customer_models.Customer, on_delete=models.CASCADE)
+    owner = models.ForeignKey(customer_models.Customer, on_delete=models.CASCADE) # type: ignore
     public = models.BooleanField(default=False)
 
     class Meta:

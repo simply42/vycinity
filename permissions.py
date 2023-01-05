@@ -13,8 +13,9 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with VyCinity. If not, see <https://www.gnu.org/licenses/>.
 
+from django.http import HttpRequest
 from rest_framework.permissions import BasePermission
-from vycinity.models import customer_models
+from vycinity.models import AbstractOwnedObject, customer_models
 
 class IsRootCustomer(BasePermission):
     """
@@ -26,3 +27,19 @@ class IsRootCustomer(BasePermission):
 
     def has_object_permission(self, request, view, obj):
         return self.has_permission(request, view)
+
+class IsOwnerOfObjectOrPublicObject(BasePermission):
+    """
+    Allows to access a specific object, when the object is public and it's a
+    read request or when the object belongs to the users customer.
+    """
+    
+    def has_object_permission(self, request: HttpRequest, view, obj):
+        user = request.user
+        if not user or not isinstance(user, customer_models.User) or not isinstance(obj, AbstractOwnedObject):
+            return False
+        if obj.owned_by(user.customer):
+            return True
+        if hasattr(obj, 'public') and obj.public and request.method == 'GET':
+            return True
+        return False
