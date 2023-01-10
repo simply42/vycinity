@@ -48,7 +48,7 @@ class CustomerList(ListCreateAPIView):
         return Customer.objects.filter(pk__in=pk_list)
 
 
-class IsOwnedCustomerForReadAndNotOwnForWrite(permissions.BasePermission):
+class IsOwnedCustomerForReadAndNotSameForWrite(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
         if not isinstance(request, Request):
             raise AssertionError('request is of wrong type.', request)
@@ -65,6 +65,6 @@ class IsOwnedCustomerForReadAndNotOwnForWrite(permissions.BasePermission):
 
 class CustomerDetailView(RetrieveUpdateDestroyAPIView):
     schema = CustomerSchema(tags=['customer'], operation_id_base='Customer', component_name='Customer')
-    permission_classes = [IsOwnedCustomerForReadAndNotOwnForWrite]
+    permission_classes = [IsOwnedCustomerForReadAndNotSameForWrite]
     serializer_class = CustomerSerializer
     queryset = Customer.objects.all()
