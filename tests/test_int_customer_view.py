@@ -48,8 +48,7 @@ class CustomerAPITest(TestCase):
         sub_auth = 'Basic ' + b64encode((sub_user.name + ':' + sub_user_pw).encode('utf-8')).decode('ascii') 
         c = Client()
 
-# TODO: translate
-        # korrekte Liste mit Eltern- und Kind-Customer, aber ohne parallelem Customer 
+        # correct list including parent-customer and child customer, without "parallel" customer
         response = c.get('/api/v1/customers', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(200, response.status_code)
         content = response.json()
@@ -62,8 +61,7 @@ class CustomerAPITest(TestCase):
         self.assertEqual(str(self.main_customer.id), content[1]['parent_customer'])
         self.assertEqual(str(sub_customer.id), content[1]['id'])
 
-# TODO: translate
-        # korrekte Liste nur mit Kind-Customer
+        # correct list with child customer
         response = c.get('/api/v1/customers', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=sub_auth)
         self.assertEqual(200, response.status_code)
         content = response.json()
@@ -76,8 +74,7 @@ class CustomerAPITest(TestCase):
     def test_get_single_customer(self):
         c = Client()
 
-# TODO: translate
-        # korrekter Fall
+        # correct case
         response = c.get('/api/v1/customers/%s' % self.main_customer.id, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(200, response.status_code)
         content = response.json()
@@ -86,16 +83,14 @@ class CustomerAPITest(TestCase):
         self.assertIsNone(content['parent_customer'])
         self.assertEqual(str(self.main_customer.id), content['id'])
 
-# TODO: translate
-        # Fall ohne Zugang
+        # wrong: no access
         response2 = c.get('/api/v1/customers/%s' % self.other_root_customer.id, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(403, response2.status_code)
 
     def test_post_customer(self):
         c = Client()
 
-# TODO: translate
-        # korrekter Fall
+        # good
         response = c.post('/api/v1/customers', {'name': 'sub customer', 'parent_customer': str(self.main_customer.id)}, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(201, response.status_code)
         content = response.json()
@@ -103,18 +98,15 @@ class CustomerAPITest(TestCase):
         self.assertEqual('sub customer', content['name'])
         self.assertEqual(str(self.main_customer.id), content['parent_customer'])
 
-# TODO: translate
-        # Falscher Fall: Root customer sollen nicht über API erstellbar sein
+        # wrong: no root customers may be created via api
         response = c.post('/api/v1/customers', {'name': 'sub customer 2'}, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(400, response.status_code)
         
-# TODO: translate
-        # Falscher Fall: Customer darf nicht für wen anders anlegbar sein
+        # wrong: no customer for someone else out of control
         response = c.post('/api/v1/customers', {'name': 'sub customer 3', 'parent_customer': str(self.other_root_customer.id)}, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(403, response.status_code)
         
-# TODO: translate
-        # Falscher Fall: Customer dürfen nicht doppelt angelegt werden
+        # wrong: no double customers
         response = c.post('/api/v1/customers', {'name': 'sub customer', 'parent_customer': str(self.main_customer.id)}, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(400, response.status_code)
         
@@ -122,8 +114,7 @@ class CustomerAPITest(TestCase):
         c = Client()
         sub_customer = customer_models.Customer.objects.create(name='sub customer', parent_customer=self.main_customer)
 
-# TODO: translate
-        # korrekter Fall
+        # good
         response = c.put('/api/v1/customers/%s' % sub_customer.id, json.dumps({'name': 'sub customer 1', 'parent_customer': str(self.main_customer.id)}), content_type='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(200, response.status_code)
         content = response.json()
@@ -131,23 +122,19 @@ class CustomerAPITest(TestCase):
         self.assertEqual('sub customer 1', content['name'])
         self.assertEqual(str(self.main_customer.id), content['parent_customer'])
 
-# TODO: translate
-        # Falscher Fall: Eigener Kunde nicht modifizierbar
+        # wrong: own customer not modifiable
         response = c.put('/api/v1/customers/%s' % self.main_customer.id, json.dumps({'name': 'sub customer 2'}), content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(400, response.status_code)
         
-# TODO: translate
-        # Falscher Fall: Customer darf nicht für wen anders veränderbar sein
+        # wrong: other customer under control may not be modifiable
         response = c.put('/api/v1/customers/%s' % self.other_root_customer.id, json.dumps({'name': 'other customer'}), content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(403, response.status_code)
         
-# TODO: translate
-        # Falscher Fall: Customer darf nicht überschrieben werden auf einen Customer, der einem nicht gehört
+        # wrong: no movement of a customer to another one out of control
         response = c.put('/api/v1/customers/%s' % sub_customer.id, json.dumps({'name': 'sub customer', 'parent_customer': str(self.other_root_customer.id)}), content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(403, response.status_code)
         
-# TODO: translate
-        # Falscher Fall: Customer dürfen nicht doppelt angelegt werden
+        # wrong: no double customers
         response = c.put('/api/v1/customers/%s' % sub_customer.id, json.dumps({'name': self.main_customer.name, 'parent_customer': str(self.main_customer.id)}), content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(400, response.status_code)
 
@@ -155,8 +142,7 @@ class CustomerAPITest(TestCase):
         c = Client()
         sub_customer = customer_models.Customer.objects.create(name='sub customer', parent_customer=self.main_customer)
 
-# TODO: translate
-        # korrekter Fall
+        # good
         sub_customer_id = sub_customer.id
         response = c.delete('/api/v1/customers/%s' % sub_customer_id, HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(204, response.status_code)
@@ -166,8 +152,7 @@ class CustomerAPITest(TestCase):
         except customer_models.Customer.DoesNotExist:
             pass
 
-# TODO: translate
-        # Falscher Fall: Eigener Kunde nicht modifizierbar
+        # wrong: own customer not modifiable
         main_customer_id = self.main_customer.id
         response = c.delete('/api/v1/customers/%s' % main_customer_id, HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(400, response.status_code)
@@ -176,8 +161,7 @@ class CustomerAPITest(TestCase):
         except customer_models.Customer.DoesNotExist:
             self.fail('customer deleted, but should exist')
         
-# TODO: translate
-        # Falscher Fall: Customer dürfen nicht doppelt angelegt werden
+        # wrong: other customer out of control may not be modified
         other_customer_id = self.other_root_customer.id
         response = c.delete('/api/v1/customers/%s' % other_customer_id, HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(403, response.status_code)
