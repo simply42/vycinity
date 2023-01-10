@@ -13,14 +13,10 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with VyCinity. If not, see <https://www.gnu.org/licenses/>.
 
-from django.http import Http404, HttpResponseForbidden, HttpResponseBadRequest
-from django.db.models import Q
 from rest_framework import permissions
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
-from rest_framework.response import Response
 from rest_framework.request import Request
 from rest_framework.schemas.openapi import AutoSchema
-from rest_framework import status
 from vycinity.models.customer_models import Customer, User
 from vycinity.serializers.customer_serializers import CustomerSerializer
 
