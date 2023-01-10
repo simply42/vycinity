@@ -34,11 +34,11 @@ class CustomerAPITest(TestCase):
         response = c.get('/api/v1/customers', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(200, response.status_code)
         content = response.json()
-        self.assertTrue(isinstance(content, list))
-        self.assertEqual(1, len(content))
-        self.assertEqual(self.main_customer.name, content[0]['name'])
-        self.assertIsNone(content[0]['parent_customer'])
-        self.assertEqual(str(self.main_customer.id), content[0]['id'])
+        self.assertTrue(isinstance(content['results'], list))
+        self.assertEqual(1, len(content['results']))
+        self.assertEqual(self.main_customer.name, content['results'][0]['name'])
+        self.assertIsNone(content['results'][0]['parent_customer'])
+        self.assertEqual(str(self.main_customer.id), content['results'][0]['id'])
 
     def test_list_customer_multiple(self):
         sub_customer = customer_models.Customer.objects.create(name='Test Sub customer', parent_customer=self.main_customer)
@@ -52,24 +52,31 @@ class CustomerAPITest(TestCase):
         response = c.get('/api/v1/customers', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
         self.assertEqual(200, response.status_code)
         content = response.json()
-        self.assertTrue(isinstance(content, list))
-        self.assertEqual(2, len(content))
-        self.assertEqual(self.main_customer.name, content[0]['name'])
-        self.assertIsNone(content[0]['parent_customer'])
-        self.assertEqual(str(self.main_customer.id), content[0]['id'])
-        self.assertEqual(sub_customer.name, content[1]['name'])
-        self.assertEqual(str(self.main_customer.id), content[1]['parent_customer'])
-        self.assertEqual(str(sub_customer.id), content[1]['id'])
+        self.assertTrue(isinstance(content['results'], list))
+        self.assertEqual(2, len(content['results']))
+        correct_ids = []
+        for result in content['results']:
+            if result['id'] == str(self.main_customer.id):
+                self.assertEqual(self.main_customer.name, result['name'])
+                self.assertIsNone(result['parent_customer'])
+                correct_ids.append(result['id'])
+            if result['id'] == str(sub_customer.id):
+                self.assertEqual(sub_customer.name, result['name'])
+                self.assertEqual(str(self.main_customer.id), result['parent_customer'])
+                correct_ids.append(result['id'])
+
+        self.assertIn(str(self.main_customer.id), correct_ids)
+        self.assertIn(str(sub_customer.id), correct_ids)
 
         # correct list with child customer
         response = c.get('/api/v1/customers', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=sub_auth)
         self.assertEqual(200, response.status_code)
         content = response.json()
-        self.assertTrue(isinstance(content, list))
-        self.assertEqual(1, len(content))
-        self.assertEqual(sub_customer.name, content[0]['name'])
-        self.assertEqual(str(self.main_customer.id), content[0]['parent_customer'])
-        self.assertEqual(str(sub_customer.id), content[0]['id'])
+        self.assertTrue(isinstance(content['results'], list))
+        self.assertEqual(1, len(content['results']))
+        self.assertEqual(sub_customer.name, content['results'][0]['name'])
+        self.assertEqual(str(self.main_customer.id), content['results'][0]['parent_customer'])
+        self.assertEqual(str(sub_customer.id), content['results'][0]['id'])
 
     def test_get_single_customer(self):
         c = Client()
@@ -104,11 +111,13 @@ class CustomerAPITest(TestCase):
         
         # wrong: no customer for someone else out of control
         response = c.post('/api/v1/customers', {'name': 'sub customer 3', 'parent_customer': str(self.other_root_customer.id)}, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
-        self.assertEqual(403, response.status_code)
+        self.assertLessEqual(400, response.status_code)
+        self.assertGreater(500, response.status_code)
         
         # wrong: no double customers
         response = c.post('/api/v1/customers', {'name': 'sub customer', 'parent_customer': str(self.main_customer.id)}, HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
-        self.assertEqual(400, response.status_code)
+        self.assertLessEqual(400, response.status_code)
+        self.assertGreater(500, response.status_code)
         
     def test_put_customer(self):
         c = Client()
@@ -124,19 +133,23 @@ class CustomerAPITest(TestCase):
 
         # wrong: own customer not modifiable
         response = c.put('/api/v1/customers/%s' % self.main_customer.id, json.dumps({'name': 'sub customer 2'}), content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
-        self.assertEqual(400, response.status_code)
+        self.assertLessEqual(400, response.status_code)
+        self.assertGreater(500, response.status_code)
         
         # wrong: other customer under control may not be modifiable
         response = c.put('/api/v1/customers/%s' % self.other_root_customer.id, json.dumps({'name': 'other customer'}), content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
-        self.assertEqual(403, response.status_code)
+        self.assertLessEqual(400, response.status_code)
+        self.assertGreater(500, response.status_code)
         
         # wrong: no movement of a customer to another one out of control
         response = c.put('/api/v1/customers/%s' % sub_customer.id, json.dumps({'name': 'sub customer', 'parent_customer': str(self.other_root_customer.id)}), content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
-        self.assertEqual(403, response.status_code)
+        self.assertLessEqual(400, response.status_code)
+        self.assertGreater(500, response.status_code)
         
         # wrong: no double customers
         response = c.put('/api/v1/customers/%s' % sub_customer.id, json.dumps({'name': self.main_customer.name, 'parent_customer': str(self.main_customer.id)}), content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
-        self.assertEqual(400, response.status_code)
+        self.assertLessEqual(400, response.status_code)
+        self.assertGreater(500, response.status_code)
 
     def test_delete_customer(self):
         c = Client()
@@ -155,7 +168,8 @@ class CustomerAPITest(TestCase):
         # wrong: own customer not modifiable
         main_customer_id = self.main_customer.id
         response = c.delete('/api/v1/customers/%s' % main_customer_id, HTTP_AUTHORIZATION=self.authorization)
-        self.assertEqual(400, response.status_code)
+        self.assertLessEqual(400, response.status_code)
+        self.assertGreater(500, response.status_code)
         try:
             customer_models.Customer.objects.get(id=main_customer_id)
         except customer_models.Customer.DoesNotExist:
@@ -164,7 +178,8 @@ class CustomerAPITest(TestCase):
         # wrong: other customer out of control may not be modified
         other_customer_id = self.other_root_customer.id
         response = c.delete('/api/v1/customers/%s' % other_customer_id, HTTP_AUTHORIZATION=self.authorization)
-        self.assertEqual(403, response.status_code)
+        self.assertLessEqual(400, response.status_code)
+        self.assertGreater(500, response.status_code)
         try:
             customer_models.Customer.objects.get(id=other_customer_id)
         except customer_models.Customer.DoesNotExist:

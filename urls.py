@@ -35,7 +35,7 @@ urlpatterns = [
     path('deployments', basic_views.DeploymentList.as_view()),
     path('deployments/<uuid:id>', basic_views.DeploymentDetail.as_view()),
     path('customers', customer_views.CustomerList.as_view()),
-    path('customers/<uuid:id>', customer_views.CustomerDetailView.as_view()),
+    path('customers/<uuid:pk>', customer_views.CustomerDetailView.as_view()),
     path('changesets', change_views.ChangeSetList.as_view()),
     path('changesets/<uuid:id>', change_views.ChangeSetDetailView.as_view()),
     # Not ready to use yet

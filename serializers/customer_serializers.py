@@ -13,11 +13,22 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with VyCinity. If not, see <https://www.gnu.org/licenses/>.
 
-from rest_framework.serializers import ModelSerializer
+from rest_framework import serializers
+from rest_framework.request import Request
 from vycinity.models.customer_models import Customer
 
-class CustomerSerializer(ModelSerializer):
+class CustomerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customer
         fields = ['id', 'name', 'parent_customer']
         read_only_fields = ['id']
+
+    parent_customer = serializers.PrimaryKeyRelatedField(queryset=Customer.objects.all(), allow_null=False, pk_field=serializers.UUIDField(format='hex_verbose'))
+
+    def validate_parent_customer(self, value):
+        request: Request = self._context['request']
+        if not request or not isinstance(request, Request):
+            raise AssertionError('request is not set as context for this serializer (or has wrong type). This causes errors while validation.', request)
+        if value not in request.user.customer.get_visible_customers():
+            raise serializers.ValidationError(['Owner is not accessible by current user.'])
+        return value
