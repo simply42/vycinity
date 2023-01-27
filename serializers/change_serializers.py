@@ -18,11 +18,12 @@ from vycinity import models
 from vycinity.models import change_models
 
 class ChangeSetSerializer(ModelSerializer):
-    changes = PrimaryKeyRelatedField(many=True, read_only=True)
     class Meta:
         model = change_models.ChangeSet
         fields = ['id', 'owner', 'owner_name', 'user', 'user_name', 'created', 'modified', 'applied', 'changes']
-        read_only_fields = ['id', 'owner', 'owner_name', 'user', 'user_name', 'created', 'modified', 'applied']
+        read_only_fields = fields
+
+    changes = PrimaryKeyRelatedField(many=True, read_only=True)
 
 class ChangeSerializer(ModelSerializer):
     class Meta:

@@ -79,7 +79,8 @@ class ChangeAPITest(TestCase):
         self.assertIsNotNone(result['applied'])
 
         response2: Response = c.put('/api/v1/changesets/{}'.format(resultPrep['changeset']), json.dumps({}), content_type='application/json', HTTP_ACCEPT='application/json', HTTP_AUTHORIZATION=self.authorization)
-        self.assertEqual(400, response2.status_code)
+        self.assertLessEqual(400, response2.status_code)
+        self.assertGreater(500, response2.status_code)
 
     def testDeleteChangesetOK(self):
         c = Client()

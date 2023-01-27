@@ -8,3 +8,4 @@ uritemplate>=3.0.1, <4.0
 pytest>=6.2.5, <7.0
 pytest-django>=4.4.0, <5.0
 django-polymorphic>=3.1, <4.0
+django-filter>=22.1, <23.0

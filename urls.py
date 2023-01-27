@@ -37,7 +37,7 @@ urlpatterns = [
     path('customers', customer_views.CustomerList.as_view()),
     path('customers/<uuid:pk>', customer_views.CustomerDetailView.as_view()),
     path('changesets', change_views.ChangeSetList.as_view()),
-    path('changesets/<uuid:id>', change_views.ChangeSetDetailView.as_view()),
+    path('changesets/<uuid:pk>', change_views.ChangeSetDetailView.as_view()),
     # Not ready to use yet
     #path('changes', change_views.ChangeList.as_view()),
     #path('changes/<uuid:id>', change_views.ChangeDetailView.as_view()),

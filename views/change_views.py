@@ -13,11 +13,14 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with VyCinity. If not, see <https://www.gnu.org/licenses/>.
 
-from rest_framework import permissions, status
+from rest_framework import exceptions, permissions, status
+from rest_framework.generics import RetrieveUpdateDestroyAPIView
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.schemas.openapi import AutoSchema
 from rest_framework.views import APIView
 from vycinity.models import change_models
+from vycinity.models.customer_models import User
 from vycinity.serializers import change_serializers
 from vycinity.meta import change_management
 
@@ -59,8 +62,27 @@ class ChangeSetList(APIView):
         new_changeset.save()
         return Response(change_serializers.ChangeSetSerializer(new_changeset).data)
 
+class ChangeSetOwned(permissions.BasePermission):
+    def has_object_permission(self, request, view, obj):
+        if not isinstance(request, Request):
+            raise AssertionError('request is not a rest_framework.request.Request')
+        user = request.user
+        if not user:
+            return False
+        if not isinstance(user, User):
+            raise AssertionError('requests\' user is not of a usable type')
+        if not isinstance(obj, change_models.ChangeSet):
+            raise AssertionError('obj of interest is not of expected kind ChangeSet')
+        if obj.owner not in user.customer.get_visible_customers():
+            return False
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        elif request.method in ['PUT', 'DELETE']:
+            return obj.applied is None
+        return False
+        
 
-class ChangeSetDetailView(APIView):
+class ChangeSetDetailView(RetrieveUpdateDestroyAPIView):
     '''
     A changeset is a collection of changes.
 
@@ -68,49 +90,27 @@ class ChangeSetDetailView(APIView):
     Retrieve a single changeset.
 
     put:
-    Apply a changeset. The changeset included in the request is ignored (prefectly fine to send just `{}`). 
+    Apply a changeset. The changeset included in the request is ignored (prefectly fine to send
+    just `{}`). Only unapplied changesets may be applied.
 
     delete:
     Delete a changeset. As a changeset does also document changes, only non-applied changesets may be deleted.
     '''
     
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [ChangeSetOwned]
     schema = ChangeSetListSchema(tags=['changeset'], operation_id_base='ChangeSet', component_name='ChangeSet')
+    queryset = change_models.ChangeSet.objects.all()
+    serializer_class = change_serializers.ChangeSetSerializer
 
-    def get(self, request, id, format=None):
+    def perform_update(self, serializer):
+        if not isinstance(serializer, change_serializers.ChangeSetSerializer):
+            raise AssertionError('Serializer is of unkown type.')
+        changeset: change_models.ChangeSet = serializer.instance # type: ignore
         try:
-            changeset = change_models.ChangeSet.objects.get(pk=id)
-            if not changeset.owner in request.user.customer.get_visible_customers():
-                return Response({'general': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
-            return Response(change_serializers.ChangeSetSerializer(changeset).data)
-        except change_models.ChangeSet.DoesNotExist:
-            return Response({'general': 'Not Found.'}, status=status.HTTP_404_NOT_FOUND)
-
-    def put(self, request, id, format=None):
-        try:
-            changeset = change_models.ChangeSet.objects.get(pk=id)
-            if not changeset.owner in request.user.customer.get_visible_customers():
-                return Response({'general': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
-            try:
-                change_management.apply_changeset(changeset)
-                changeset.refresh_from_db()
-                return Response(change_serializers.ChangeSetSerializer(changeset).data)
-            except change_management.ChangeConflictError as cce:
-                return Response({'failure': cce.message}, status=status.HTTP_400_BAD_REQUEST)
-        except change_models.ChangeSet.DoesNotExist:
-            return Response({'general': 'Not Found.'}, status=status.HTTP_404_NOT_FOUND)
-
-    def delete(self, request, id, format=None):
-        try:
-            changeset = change_models.ChangeSet.objects.get(pk=id)
-            if not changeset.owner in request.user.customer.get_visible_customers():
-                return Response({'general': 'Access denied.'}, status=status.HTTP_403_FORBIDDEN)
-            if changeset.applied:
-                return Response({'general': 'Change set was already applied. Deletion is not possible.'}, status=status.HTTP_403_FORBIDDEN)
-            changeset.delete()
-            return Response(status=status.HTTP_204_NO_CONTENT)
-        except change_models.ChangeSet.DoesNotExist:
-            raise Response({'general': 'Not Found.'}, status=status.HTTP_404_NOT_FOUND)
+            change_management.apply_changeset(changeset)
+            changeset.refresh_from_db()
+        except change_management.ChangeConflictError as cce:
+            raise exceptions.APIException({'failure': cce.message}, status.HTTP_400_BAD_REQUEST) from cce
 
 
 class ChangeList(APIView):
