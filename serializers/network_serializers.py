@@ -16,12 +16,13 @@
 from rest_framework import serializers
 from vycinity.models.network_models import Network, ManagedInterface, ManagedVRRPInterface
 from vycinity.serializers.firewall_serializers import OwnedObjectRelatedField
+from vycinity.serializers.generics import BaseOwnedObjectSerializer
 
-class NetworkSerializer(serializers.ModelSerializer):
+class NetworkSerializer(BaseOwnedObjectSerializer):
     class Meta:
         model = Network
-        fields = ['uuid', 'owner', 'ipv4_network_address', 'ipv4_network_bits', 'ipv6_network_address', 'ipv6_network_bits', 'layer2_network_id', 'name', 'vrrp_password', 'public']
-        read_only_fields = ['uuid']
+        fields = BaseOwnedObjectSerializer.Meta.fields + ['ipv4_network_address', 'ipv4_network_bits', 'ipv6_network_address', 'ipv6_network_bits', 'layer2_network_id', 'name', 'vrrp_password']
+        read_only_fields = BaseOwnedObjectSerializer.Meta.read_only_fields
 
 class ManagedInterfaceSerializer(serializers.ModelSerializer):
     class Meta:
