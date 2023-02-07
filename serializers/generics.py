@@ -13,7 +13,6 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with VyCinity. If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Type
 from rest_framework import serializers
 from rest_framework.relations import ManyRelatedField
 from rest_framework.request import Request
