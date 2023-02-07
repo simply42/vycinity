@@ -35,6 +35,7 @@ class CustomerList(ListCreateAPIView):
     schema = CustomerSchema(tags=['customer'], operation_id_base='Customer', component_name='Customer')
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = CustomerSerializer
+    search_fields = ['name']
 
     def get_queryset(self):
         '''
