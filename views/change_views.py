@@ -14,7 +14,7 @@
 # along with VyCinity. If not, see <https://www.gnu.org/licenses/>.
 
 from rest_framework import exceptions, permissions, status
-from rest_framework.generics import RetrieveUpdateDestroyAPIView
+from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.schemas.openapi import AutoSchema
@@ -39,7 +39,7 @@ class ChangeSetListSchema(AutoSchema):
         return change_serializers.ChangeSetSerializer()
 
 
-class ChangeSetList(APIView):
+class ChangeSetList(ListCreateAPIView):
     '''
     A changeset is a collection of changes.
 
@@ -52,15 +52,23 @@ class ChangeSetList(APIView):
 
     permission_classes = [permissions.IsAuthenticated]
     schema = ChangeSetListSchema(tags=['changeset'], operation_id_base='ChangeSet', component_name='ChangeSet')
+    serializer_class = change_serializers.ChangeSetSerializer
 
-    def get(self, request, format=None):
-        change_sets = change_models.ChangeSet.objects.filter(owner__in=request.user.customer.get_visible_customers())
-        return Response(change_serializers.ChangeSetSerializer(change_sets, many=True).data)
+    def get_queryset(self):
+        assert isinstance(self.request, Request), "current request has wrong type."
+        assert isinstance(self.request.user, User), "current requests user has wrong type."
+        return change_models.ChangeSet.objects.filter(owner__in=self.request.user.customer.get_visible_customers())
 
-    def post(self, request, format=None):
-        new_changeset = change_models.ChangeSet(owner=request.user.customer, user=request.user, owner_name=request.user.customer.name, user_name=request.user.name)
-        new_changeset.save()
-        return Response(change_serializers.ChangeSetSerializer(new_changeset).data)
+    def perform_create(self, serializer):
+        assert isinstance(self.request, Request), "current request has wrong type."
+        assert isinstance(self.request.user, User), "current requests user has wrong type."
+        assert isinstance(serializer, change_serializers.ChangeSetSerializer), 'Serializer of wrong type'
+        assert isinstance(serializer.validated_data, dict), 'serializer not validated before'
+        serializer.validated_data['owner'] = self.request.user.customer
+        serializer.validated_data['user'] = self.request.user
+        serializer.validated_data['owner_name'] = self.request.user.customer.name
+        serializer.validated_data['user_name'] = self.request.user.name
+        serializer.save()
 
 class ChangeSetOwned(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
