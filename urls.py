@@ -19,11 +19,11 @@ from rest_framework.schemas import get_schema_view
 from rest_framework.permissions import IsAuthenticated
 
 from vycinity.meta.registries import ChangeableObjectRegistry
-from .views import basic_views, customer_views, change_views
+from .views import basic_views, customer_views, change_views, network_views
 
 urlpatterns = [
     path('routers/vyos13', basic_views.Vyos13RouterList.as_view()),
-    path('routers/vyos13/<uuid:id>', basic_views.Vyos13RouterDetailView.as_view()),
+    path('routers/vyos13/<uuid:pk>', basic_views.Vyos13RouterDetailView.as_view()),
     path('routers/vyos13/<uuid:id>/deploy', basic_views.Vyos13RouterDeployView.as_view()),
     path('routers/vyos13/<uuid:router_id>/liveconfigs', basic_views.Vyos13RouterLiveConfigListView.as_view()),
     path('routers/vyos13/<uuid:router_id>/liveconfigs/<uuid:lrc_id>', basic_views.Vyos13RouterLiveConfigDetailView.as_view()),
@@ -38,6 +38,8 @@ urlpatterns = [
     path('customers/<uuid:pk>', customer_views.CustomerDetailView.as_view()),
     path('changesets', change_views.ChangeSetList.as_view()),
     path('changesets/<uuid:pk>', change_views.ChangeSetDetailView.as_view()),
+    path('managedinterfaces', network_views.ManagedInterfaceList.as_view()),
+    path('managedinterfaces/<uuid:pk>', network_views.ManagedInterfaceDetailView.as_view()),
     # Not ready to use yet
     #path('changes', change_views.ChangeList.as_view()),
     #path('changes/<uuid:id>', change_views.ChangeDetailView.as_view()),

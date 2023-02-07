@@ -15,7 +15,7 @@
 
 from django.http import Http404
 from rest_framework import permissions
-from rest_framework.generics import ListCreateAPIView, ListAPIView, RetrieveAPIView
+from rest_framework.generics import ListCreateAPIView, ListAPIView, RetrieveAPIView, RetrieveUpdateDestroyAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
@@ -28,74 +28,49 @@ from vycinity.tasks import deploy, retrieve_vyos13_live_router_config
 from vycinity.views import GenericSchema
 
 
-class Vyos13RouterList(APIView):
+class Vyos13RouterList(ListCreateAPIView):
     '''
     Management of VyOS Routers with at least version 1.3.0
     '''
     schema = GenericSchema(serializer=Vyos13RouterSerializer, tags=['router', 'vyos 1.3'], operation_id_base='Vyos13Router', component_name='Vyos13Router')
     permission_classes = [IsRootCustomer]
+    serializer_class = Vyos13RouterSerializer
+    queryset = Vyos13Router.objects.all()
+    search_fields = ['name', 'loopback']
 
-    def get(self, request, format=None):
-        all_routers = Vyos13Router.objects.all()
-        return Response(Vyos13RouterSerializer(all_routers, many=True).data)
-
-    def post(self, request, format=None):
-        serializer = Vyos13RouterSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.validated_data['deploy'] = False
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    def perform_create(self, serializer):
+        serializer.validated_data['deploy'] = False
+        super().perform_create(serializer)
 
 
-class Vyos13RouterDetailView(APIView):
+class Vyos13RouterDetailView(RetrieveUpdateDestroyAPIView):
     '''
     Management of VyOS Routers with at least version 1.3.0
     '''
     schema = GenericSchema(serializer=Vyos13RouterSerializer, tags=['router', 'vyos 1.3'], operation_id_base='Vyos13Router', component_name='Vyos13Router')
     permission_classes = [IsRootCustomer]
-
-    def get(self, request, id, format=None):
-        try:
-            result = Vyos13Router.objects.get(pk=id)
-            serializer = Vyos13RouterSerializer(result)
-            return Response(serializer.data)
-        except Vyos13Router.DoesNotExist:
-            raise Http404()
+    serializer_class = Vyos13RouterSerializer
+    queryset = Vyos13Router.objects.all()
     
-    def put(self, request, id, format=None):
-        try:
-            result = Vyos13Router.objects.get(pk=id)
-            serializer = Vyos13RouterSerializer(result, data=request.data)
-            if serializer.is_valid():
-                trigger_deploy = False
-                if ('active_static_configs' in serializer.validated_data and serializer.validated_data['active_static_configs'] != result.active_static_configs) or (not result.deploy and serializer.validated_data['deploy']):
-                    trigger_deploy = True
-                serializer.save()
-                result.refresh_from_db()
-                
-                if trigger_deploy == True and result.deploy:
-                    deployment = Deployment(change='changed router', state=DEPLOYMENT_STATE_PREPARATION)
-                    deployment.save()
-                    generated_config = Vyos13Adapter.generateConfig(result)
-                    config = Vyos13RouterConfig.objects.create(router=result, config=generated_config.config)
-                    deployment.configs.add(config)
-                    deployment.state = DEPLOYMENT_STATE_READY
-                    deployment.save()
+    def perform_update(self, serializer):
+        if not isinstance(serializer, self.get_serializer_class()):
+            raise AssertionError('got unexpected serializer type {}'.format(type(serializer)))
+        if not isinstance(serializer.validated_data, dict):
+            raise AssertionError('serializer did not seem to validate the data to save now.')
+        trigger_deploy = False
+        if ('active_static_configs' in serializer.validated_data and serializer.validated_data['active_static_configs'] != serializer.instance.active_static_configs) or (not serializer.instance.deploy and serializer.validated_data['deploy']):
+            trigger_deploy = True
+        super().perform_update(serializer)
+        if trigger_deploy == True and serializer.instance.deploy:
+            deployment = Deployment(change='changed router', state=DEPLOYMENT_STATE_PREPARATION)
+            deployment.save()
+            generated_config = Vyos13Adapter.generateConfig(serializer.instance)
+            config = Vyos13RouterConfig.objects.create(router=serializer.instance, config=generated_config.config)
+            deployment.configs.add(config)
+            deployment.state = DEPLOYMENT_STATE_READY
+            deployment.save()
+            deploy.delay(deployment.pk)
 
-                    deploy.delay(deployment.pk)
-                return Response(serializer.data)
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        except Vyos13Router.DoesNotExist:
-            raise Http404()
-
-    def delete(self, request, id, format=None):
-        try:
-            result = Vyos13Router.objects.get(pk=id)
-            result.delete()
-            return Response(status=status.HTTP_204_NO_CONTENT)
-        except Vyos13Router.DoesNotExist:
-            raise Http404()
 
 class Vyos13RouterDeployView(APIView):
     '''
