@@ -15,14 +15,15 @@
 
 from django.http import Http404, HttpResponseForbidden
 from rest_framework import permissions
+from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.schemas.openapi import AutoSchema
 from rest_framework.serializers import Serializer
 from rest_framework import status
-from typing import Any, List, Type
-from vycinity.models import OWNED_OBJECT_STATE_LIVE, OWNED_OBJECT_STATE_PREPARED, change_models, customer_models, OwnedObject
+from typing import Type
+from vycinity.models import OwnedObject
 from vycinity.models.network_models import Network, ManagedInterface, ManagedVRRPInterface
+from vycinity.permissions import IsRootCustomer
 from vycinity.serializers.network_serializers import NetworkSerializer, ManagedInterfaceSerializer, ManagedVRRPInterfaceSerializer
 from vycinity.views import GenericOwnedObjectDetail, GenericOwnedObjectList, GenericOwnedObjectSchema, GenericSchema
 
@@ -64,7 +65,7 @@ class NetworkDetailView(GenericOwnedObjectDetail):
         return NetworkSerializer
 
 
-class ManagedInterfaceList(APIView):
+class ManagedInterfaceList(ListCreateAPIView):
     '''
     get:
         Return all managed interfaces.
@@ -73,26 +74,11 @@ class ManagedInterfaceList(APIView):
         Create a managed interface.
     '''
     schema = GenericSchema(serializer=ManagedInterfaceSerializer, tags=['managed interface'], operation_id_base='ManagedInterface', component_name='ManagedInterface')
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsRootCustomer]
+    queryset = ManagedInterface.objects.all()
+    serializer_class = ManagedInterfaceSerializer
 
-    def get(self, request, format=None):
-        if request.user.customer.parent_customer is not None:
-            return HttpResponseForbidden()
-        all_managed_interfaces = ManagedInterface.objects.all()
-        return Response(ManagedInterfaceSerializer(all_managed_interfaces, many=True).data)
-
-    def post(self, request, format=None):
-        if request.user.customer.parent_customer is not None:
-            return HttpResponseForbidden()
-        serializer = ManagedInterfaceSerializer(data=request.data)
-        if serializer.is_valid():
-            if serializer.validated_data['network'].state != OWNED_OBJECT_STATE_LIVE:
-                return Response(data={'network': 'Network must be applied and still live'}, status=status.HTTP_400_BAD_REQUEST)
-            serializer.save()
-            return Response(data=serializer.data, status=status.HTTP_201_CREATED)
-        return Response(data=serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-class ManagedInterfaceDetailView(APIView):
+class ManagedInterfaceDetailView(RetrieveUpdateDestroyAPIView):
     '''
     get:
         Return a single managed interfaces.
@@ -104,39 +90,9 @@ class ManagedInterfaceDetailView(APIView):
         Delete a managed interface.
     '''
     schema = GenericSchema(serializer=ManagedInterfaceSerializer, tags=['managed interface'], operation_id_base='ManagedInterface', component_name='ManagedInterface')
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request, id, format=None):
-        if request.user.customer.parent_customer is not None:
-            return HttpResponseForbidden()
-        try:
-            managed_interface = ManagedInterface.objects.get(pk=id)
-            return Response(ManagedInterfaceSerializer(managed_interface).data)
-        except ManagedInterface.DoesNotExist:
-            raise Http404()
-    
-    def put(self, request, id, format=None):
-        if request.user.customer.parent_customer is not None:
-            return HttpResponseForbidden()
-        try:
-            managed_interface = ManagedInterface.objects.get(pk=id)
-            serializer = ManagedInterfaceSerializer(managed_interface, data=request.data)
-            if serializer.is_valid():
-                serializer.save()
-                return Response(data=serializer.data)
-            return Response(data=serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        except ManagedInterface.DoesNotExist:
-            raise Http404()
-
-    def delete(self, request, id, format=None):
-        if request.user.customer.parent_customer is not None:
-            return HttpResponseForbidden()
-        try:
-            managed_interface = ManagedInterface.objects.get(pk=id)
-            managed_interface.delete()
-            return Response(status.HTTP_204_NO_CONTENT)
-        except ManagedInterface.DoesNotExist:
-            raise Http404()
+    permission_classes = [IsRootCustomer]
+    queryset = ManagedInterface.objects.all()
+    serializer_class = ManagedInterfaceSerializer
 
 class ManagedVRRPInterfaceList(APIView):
     '''

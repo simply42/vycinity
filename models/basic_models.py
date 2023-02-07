@@ -31,12 +31,11 @@ class StaticConfigSection(PolymorphicModel):
             return (len(self.context) < len(other.context))
         return NotImplemented
 
-class Vyos13StaticConfigSection(StaticConfigSection):
-    @staticmethod
-    def validate_is_object(value):
-        if type(value) != dict:
-            raise ValidationError('Value is not an object/dict')
+def validate_is_object(value):
+    if type(value) != dict:
+        raise ValidationError('Value is not an object/dict')
 
+class Vyos13StaticConfigSection(StaticConfigSection):
     content = models.JSONField(validators=[validate_is_object])
 
 class Router(PolymorphicModel):

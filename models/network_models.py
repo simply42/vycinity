@@ -18,8 +18,7 @@ from django.db import models
 from django.core.exceptions import ValidationError
 from polymorphic.models import PolymorphicModel
 from typing import List
-from vycinity.models import basic_models
-from vycinity.models import OwnedObject, AbstractOwnedObject
+from vycinity.models import basic_models, OWNED_OBJECT_STATE_LIVE, OwnedObject, AbstractOwnedObject
 
 def validate_ipv6_network_bits(value):
     if value < 0 or value > 64:
@@ -33,10 +32,14 @@ def validate_layer2_id(value):
     if value < 1 or value > 4093:
         raise ValidationError('Layer2 network id is not in valid range 1-4093')
 
+def validate_live_object(value: OwnedObject):
+    if value.state != OWNED_OBJECT_STATE_LIVE:
+        raise ValidationError('Linked object is not live')
+
 class Network(OwnedObject):
-    ipv4_network_address = models.GenericIPAddressField(null=True, unique=True, protocol='IPv4')
+    ipv4_network_address = models.GenericIPAddressField(null=True, protocol='IPv4')
     ipv4_network_bits = models.IntegerField(null=True, validators=[validate_ipv4_network_bits])
-    ipv6_network_address = models.GenericIPAddressField(null=True, unique=True, protocol='IPv6')
+    ipv6_network_address = models.GenericIPAddressField(null=True, protocol='IPv6')
     ipv6_network_bits = models.IntegerField(null=True, validators=[validate_ipv6_network_bits])
     layer2_network_id = models.IntegerField(validators=[validate_layer2_id])
     name = models.CharField(max_length=64)
@@ -59,7 +62,7 @@ class ManagedInterface(PolymorphicModel):
     router = models.ForeignKey(to=basic_models.Router, on_delete=models.CASCADE)
     ipv4_address = models.GenericIPAddressField(null=True, protocol='IPv4')
     ipv6_address = models.GenericIPAddressField(null=True, protocol='IPv6')
-    network = models.ForeignKey(to=Network, on_delete=models.CASCADE)
+    network = models.ForeignKey(to=Network, validators=[validate_live_object], on_delete=models.CASCADE)
 
     @staticmethod
     def update_networks(pre: Network, post: Network):
