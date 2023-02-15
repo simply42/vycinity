@@ -29,11 +29,11 @@ class ManagedInterfaceSerializer(serializers.ModelSerializer):
         model = ManagedInterface
         fields = ['id', 'router', 'ipv4_address', 'ipv6_address', 'network']
         read_only_fields = ['id']
-    network = OwnedObjectRelatedField(model=Network.objects, required=True)
+    network = OwnedObjectRelatedField(model=Network, required=True)
 
 class ManagedVRRPInterfaceSerializer(serializers.ModelSerializer):
     class Meta:
         model = ManagedVRRPInterface
         fields = ['id', 'router', 'ipv4_address', 'ipv6_address', 'network', 'ipv4_service_address', 'ipv6_service_address', 'priority', 'vrid']
         read_only_fields = ['id']
-    network = OwnedObjectRelatedField(model=Network.objects, required=True)
+    network = OwnedObjectRelatedField(model=Network, required=True)
