@@ -35,7 +35,7 @@ class Vyos13RouterList(ListCreateAPIView):
     schema = GenericSchema(serializer=Vyos13RouterSerializer, tags=['router', 'vyos 1.3'], operation_id_base='Vyos13Router', component_name='Vyos13Router')
     permission_classes = [IsRootCustomer]
     serializer_class = Vyos13RouterSerializer
-    queryset = Vyos13Router.objects.all()
+    queryset = Vyos13Router.objects.all().order_by('name')
     search_fields = ['name', 'loopback']
 
     def perform_create(self, serializer):
@@ -173,7 +173,7 @@ class Vyos13StaticConfigSectionList(ListCreateAPIView):
     schema = GenericSchema(serializer=Vyos13StaticConfigSectionSerializer, tags=['static config section', 'vyos 1.3'], operation_id_base='Vyos13StaticConfigSection', component_name='Vyos13StaticConfigSection')
     permission_classes = [IsRootCustomer]
     serializer_class = Vyos13StaticConfigSectionSerializer
-    queryset = Vyos13StaticConfigSection.objects.all()
+    queryset = Vyos13StaticConfigSection.objects.all().order_by('description')
 
 
 class Vyos13StaticConfigSectionDetail(APIView):
