@@ -232,7 +232,7 @@ class DeploymentList(ListAPIView):
     '''
     schema = GenericSchema(serializer=DeploymentSerializer, tags=['deployment'], operation_id_base='Deployment', component_name='Deployment')
     permission_classes = [IsRootCustomer]
-    queryset = Deployment.objects.all()
+    queryset = Deployment.objects.all().order_by('-triggered')
     serializer_class = DeploymentSerializer
 
 class DeploymentDetail(RetrieveAPIView):
