@@ -87,3 +87,4 @@ class Deployment(PolymorphicModel):
     change = models.JSONField()
     state = models.CharField(max_length=32, choices=DEPLOYMENT_STATES)
     errors = models.TextField(null=True)
+    comment = models.TextField(null=True)

@@ -74,7 +74,7 @@ class Vyos13RouterDetailView(RetrieveUpdateDestroyAPIView):
 
 class Vyos13RouterDeployView(APIView):
     '''
-    Trigger a deployment of a single router. No data required in the body, an empty object is okay. The body will be ignored.
+    Trigger a deployment of a single router. No data required in the body, an empty object is okay. Only the variable "comment" of the body will be used, if set.
     '''
     schema = GenericSchema(serializer=DeploymentSerializer, tags=['router', 'vyos 1.3'], operation_id_base='Vyos13Router', component_name='Vyos13Router')
     permission_classes = [IsRootCustomer]
@@ -86,6 +86,8 @@ class Vyos13RouterDeployView(APIView):
             generated_config = Vyos13Adapter.generateConfig(result)
             config = Vyos13RouterConfig.objects.create(router=result, config=generated_config.config)
             deployment.configs.add(config)
+            if request.data and 'comment' in request.data and isinstance(request.data['comment'], str):
+                deployment.comment = request.data['comment']
             deployment.state = DEPLOYMENT_STATE_READY
             deployment.save()
 

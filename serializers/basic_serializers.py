@@ -47,5 +47,5 @@ class Vyos13RouterConfigSerializer(serializers.ModelSerializer):
 class DeploymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = basic_models.Deployment
-        fields = ['id', 'triggered', 'last_update', 'configs', 'change', 'state', 'errors']
+        fields = ['id', 'triggered', 'last_update', 'configs', 'change', 'state', 'errors', 'comment']
         read_only_fields = fields
