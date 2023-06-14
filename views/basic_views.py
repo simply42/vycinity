@@ -200,7 +200,7 @@ class Vyos13StaticConfigSectionDetail(APIView):
             if serializer.is_valid():
                 serializer.save()
 
-                routers = Vyos13Router.objects.filter(active_static_configs__in=[result]).distinct()
+                routers = Vyos13Router.objects.filter(active_static_configs__in=[result], deploy=True).distinct()
                 deployment = Deployment(state=DEPLOYMENT_STATE_PREPARATION, change='change static_config_section')
                 deployment.save()
                 for router in routers:
