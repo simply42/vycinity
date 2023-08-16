@@ -3,7 +3,7 @@ djangorestframework>=3.13, <4.0
 django[argon2]
 celery>=5.0, <6.0
 requests>=2.25, <3.0
-PyYAML>=5.0, <6.0
+PyYAML>=6.0, <7.0
 uritemplate>=3.0.1, <4.0
 pytest>=6.2.5, <7.0
 pytest-django>=4.4.0, <5.0
