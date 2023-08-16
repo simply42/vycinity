@@ -413,7 +413,12 @@ class TestVyos13RouterConfigDiff(unittest.TestCase):
         self.assertIn({'op': 'delete', 'path': ['service', 'https', 'virtual-host', 'loopback-191', 'server-name', '10.07.2.191']}, cmds)
         self.assertIn({'op': 'set', 'path': ['service', 'https', 'virtual-host', 'loopback-191', 'server-name', '10.1.2.191']}, cmds)
         self.assertIn({'op': 'delete', 'path': ['service', 'https', 'api', 'keys']}, cmds)
-        
+    
+    def test_getApiCommands9(self):
+        diff = Vyos13RouterConfigDiff([], {'protocols':{'static':{'route':{'192.168.1.1/32':{'next-hop': '10.1.1.1'}}}, 'ospf': { 'area': {'0': {'network': "10.0.0.0/8"} }}}}, {'protocols': {'ospf': { 'area': {'0': {'network': "10.0.0.0/8"} }}}})
+        cmds = diff.genApiCommands()
+        self.assertEqual(1, len(cmds))
+        self.assertIn({'op': 'delete', 'path': ['protocols', 'static']}, cmds)
 
     def test_isEmpty1(self):
         config1 = Vyos13RouterConfig(['system'], {'ntp': ['1.2.3.4', '5.6.7.8']})

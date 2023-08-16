@@ -15,11 +15,13 @@
 
 import json
 import logging
+import re
 import requests
 from typing import Dict, List, Union
 from . import Router, RouterConfig, RouterConfigDiff, RouterConfigError, RouterCommunicationError
 
 logger = logging.getLogger(__name__)
+COMPAT_BUILD = re.compile(r'Version:\s+VyOS 1.4-rolling-202306160317')
 
 def _objectizeConf(obj: Union[list, str, dict]):
         if isinstance(obj, str):
@@ -381,6 +383,26 @@ class Vyos13Router(Router):
         logger.debug('Diff: %s', config_diff_to_apply)
         commands = config_diff_to_apply.genApiCommands()
         logger.debug('Commands to apply: %s', str(commands))
+
+        try:
+            response = requests.post(self.endpoint + '/show', {'data': json.dumps({'op': 'show', 'path': ['version']}), 'key': self.api_key}, verify=self.verify)
+            r = None
+            try:
+                r = response.json()
+            except requests.exceptions.JSONDecodeError as jde:
+                logger.warning("Could not decode answer, assuming an error")
+                raise jde
+            if not 'success' in r or not r['success'] or response.status_code < 200 or response.status_code >= 300:
+                raise Exception('Failed to retrieve system version, can\'t check whether compatible')
+            build_matched = False
+            for line in r['data'].split("\n"):
+                if COMPAT_BUILD.match(line):
+                    build_matched = True
+                    break
+            if not build_matched:
+                raise Exception('Version is incompatible to this router deployment. Ensure it matches to the compiled version.')
+        except Exception as e:
+            raise RouterCommunicationError("Communication failed while checking compatibility") from e
 
         try:
             response = requests.post(self.endpoint + '/configure', {'data': json.dumps(commands), 'key': self.api_key}, verify = self.verify)
